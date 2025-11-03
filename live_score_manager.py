@@ -74,6 +74,17 @@ class BBCLiveScoresAPI:
             print(f"Error fetching BBC live scores: {e}")
             return {'events': []}
 
+    def _determine_match_result(self, home_score: int, away_score: int) -> str:
+        """Determine the match result type based on scores."""
+        if home_score > 0 and away_score > 0:
+            return 'BTTS'
+        elif home_score > 0 and away_score == 0:
+            return 'HOME_GOAL_ONLY'
+        elif home_score == 0 and away_score > 0:
+            return 'AWAY_GOAL_ONLY'
+        else:
+            return 'NO_GOAL'
+
     def detect_match_events(self, live_data):
         """Detect events from BBC live data."""
         events = []
@@ -82,6 +93,9 @@ class BBCLiveScoresAPI:
                 # Check for BTTS events
                 home_score = event.get('homeScore', {}).get('current', 0)
                 away_score = event.get('awayScore', {}).get('current', 0)
+                status = event.get('status', {}).get('type', 'not_started')
+
+                # Detect BTTS events (both teams scored)
                 if home_score > 0 and away_score > 0:
                     events.append({
                         'type': 'btts',
@@ -90,6 +104,18 @@ class BBCLiveScoresAPI:
                         'score': f"{home_score}-{away_score}",
                         'home_team': event['homeTeam']['name'],
                         'away_team': event['awayTeam']['name']
+                    })
+
+                # Detect match finish events
+                if status == 'finished':
+                    events.append({
+                        'type': 'finished',
+                        'match_id': event['id'],
+                        'timestamp': datetime.now(),
+                        'score': f"{home_score}-{away_score}",
+                        'home_team': event['homeTeam']['name'],
+                        'away_team': event['awayTeam']['name'],
+                        'result': self._determine_match_result(home_score, away_score)
                     })
         return events
 
@@ -141,7 +167,8 @@ class LiveScoreManager:
             'halftime': [],
             'fulltime': [],
             'goal': [],
-            'btts': []
+            'btts': [],
+            'finished': []
         }
 
         # BTTS tracking for accumulator
@@ -165,6 +192,7 @@ class LiveScoreManager:
             'total_updates': 0,
             'events_processed': 0,
             'btts_detected': 0,
+            'matches_finished': 0,
             'api_calls_made': 0,
             'last_activity': None
         }
@@ -189,7 +217,7 @@ class LiveScoreManager:
         Add callback function for specific event types.
 
         Args:
-            event_type (str): Type of event ('kickoff', 'halftime', 'fulltime', 'goal', 'btts')
+            event_type (str): Type of event ('kickoff', 'halftime', 'fulltime', 'goal', 'btts', 'finished')
             callback (Callable): Function to call when event occurs
         """
         if event_type in self.event_callbacks:
@@ -295,7 +323,7 @@ class LiveScoreManager:
                 self.logger.info(f"BTTS detected for match {match_id}")
 
                 # Store BTTS result in data manager
-                self._store_btts_result(match_id, event)
+                self._store_match_result(match_id, event)
 
                 # Notify BTTS detector if available
                 if BTTS_DETECTOR_AVAILABLE:
@@ -305,35 +333,43 @@ class LiveScoreManager:
                     except Exception as e:
                         self.logger.error(f"Error notifying BTTS detector: {str(e)}")
 
+            # Special handling for finished matches
+            elif event_type == 'finished':
+                self.stats['matches_finished'] += 1
+                self.logger.info(f"Match finished: {match_id} - {event.get('score', 'Unknown')} ({event.get('result', 'Unknown')})")
+
+                # Store match result in data manager
+                self._store_match_result(match_id, event)
+
         return detected_events
 
-    def _store_btts_result(self, match_id: str, btts_event: Dict):
+    def _store_match_result(self, match_id: str, match_event: Dict):
         """
-        Store BTTS result in the data manager for accumulator tracking.
+        Store match result in the data manager for accumulator tracking.
 
         Args:
             match_id (str): Match identifier
-            btts_event (Dict): BTTS event data
+            match_event (Dict): Match event data (BTTS or finished)
         """
         try:
-            # Create BTTS result data structure
-            btts_data = {
+            # Create match result data structure
+            match_data = {
                 'match_id': match_id,
-                'detected_at': btts_event['timestamp'].isoformat(),
-                'final_score': btts_event.get('score', 'Unknown'),
-                'result': 'BTTS_YES'
+                'detected_at': match_event['timestamp'].isoformat(),
+                'final_score': match_event.get('score', 'Unknown'),
+                'result': match_event.get('result', 'UNKNOWN')
             }
 
             # Store in data manager using the new live results methods
-            success = self.data_manager.add_live_result(btts_data)
+            success = self.data_manager.add_live_result(match_data)
 
             if success:
-                self.logger.info(f"BTTS result stored for match {match_id}: {btts_data['final_score']}")
+                self.logger.info(f"Match result stored for match {match_id}: {match_data['final_score']} ({match_data['result']})")
             else:
-                self.logger.error(f"Failed to store BTTS result for match {match_id}")
+                self.logger.error(f"Failed to store match result for match {match_id}")
 
         except Exception as e:
-            self.logger.error(f"Error storing BTTS result: {str(e)}")
+            self.logger.error(f"Error storing match result: {str(e)}")
 
     def update_live_scores(self) -> Dict[str, Any]:
         """
@@ -496,6 +532,7 @@ class LiveScoreManager:
             'is_running': self.is_running,
             'active_matches': len(self.live_api.active_matches),
             'btts_matches_count': len(self.btts_matches),
+            'finished_matches_count': self.stats.get('matches_finished', 0),
             'last_update': self.last_update.isoformat() if self.last_update != datetime.min else None,
             'update_thread_alive': self.update_thread.is_alive() if self.update_thread else False
         }
@@ -508,6 +545,7 @@ class LiveScoreManager:
             'total_updates': 0,
             'events_processed': 0,
             'btts_detected': 0,
+            'matches_finished': 0,
             'api_calls_made': 0,
             'last_activity': None
         }
@@ -593,6 +631,7 @@ def main():
     print(f"   Total Updates: {stats['manager_stats']['total_updates']}")
     print(f"   Events Processed: {stats['manager_stats']['events_processed']}")
     print(f"   BTTS Detected: {stats['manager_stats']['btts_detected']}")
+    print(f"   Matches Finished: {stats['manager_stats'].get('matches_finished', 0)}")
     print(f"   API Calls Made: {stats['manager_stats']['api_calls_made']}")
 
     print("\n✨ Live Score Manager features demonstrated:")

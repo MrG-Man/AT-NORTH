@@ -5,10 +5,13 @@ Calculates historical performance and league standings for selectors
 
 import json
 import os
+import psutil
+import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import logging
 from data_manager import data_manager
+from bbc_scraper import BBCSportScraper
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +19,16 @@ class SelectorsLeague:
     """
     Handles selectors league calculations and historical performance tracking
     """
-    
+
     # Points system
     BTTS_SUCCESS_POINTS = 3
     SINGLE_GOAL_POINTS = 0
     NO_GOAL_POINTS = -3
-    
+
+    # Cache settings
+    LEAGUE_CACHE_TTL = 604800  # 7 days in seconds
+    CACHE_DIR = "cache"
+
     def __init__(self):
         self.selectors = [
             "Glynny", "Eamonn Bone", "Mickey D", "Rob Carney",
@@ -29,60 +36,95 @@ class SelectorsLeague:
         ]
         # Historical points data (prior to Sat 1 Nov)
         self.historical_points = {
-            "Eamonn Bone": 27,
-            "Fran Radar": 21,
-            "Glynny": 21,
+            "Eamonn Bone": 30,
+            "Fran Radar": 24,
+            "Glynny": 24,
             "Mickey D": 21,
             "Rob Carney": 21,
-            "Steve H": 18,
+            "Steve H": 21,
             "Danny": 18,
             "Eddie Lee": 6
         }
-        
+
+        # Initialize cache
+        self._ensure_cache_dir()
+        self._memory_usage = 0
+
         # Try to load additional historical data from file
         # Historical points are loaded above
     
     def calculate_league_data(self, view_filter: str = 'overall') -> Dict[str, Any]:
         """
-        Calculate comprehensive league data for all selectors
-        
+        Calculate comprehensive league data for all selectors with caching and memory monitoring
+
         Args:
             view_filter: Filter to apply (overall, this-season, recent)
-            
+
         Returns:
             Dictionary containing league data and statistics
         """
         try:
+            # Check if we should run calculations (only on Sunday after Saturday matches complete)
+            if not self._is_sunday_after_saturday_matches():
+                # Return cached data if available, otherwise empty data
+                cache_key = self._get_cache_key(view_filter)
+                cached_data = self._get_cached_league_data(cache_key)
+                if cached_data:
+                    logger.info("Not Sunday or Saturday matches not complete - using cached league data")
+                    return cached_data
+                else:
+                    logger.info("Not Sunday or Saturday matches not complete - returning empty league data")
+                    return self._create_empty_league_data()
+
+            # Check cache first
+            cache_key = self._get_cache_key(view_filter)
+            cached_data = self._get_cached_league_data(cache_key)
+            if cached_data:
+                logger.info("Using cached league data")
+                return cached_data
+
+            # Monitor memory usage before calculations
+            self._update_memory_usage()
+
             # Get all historical selection files
             selection_files = self._get_all_selection_files()
-            
+
             # Calculate performance for each selector
             selector_performance = {}
             for selector in self.selectors:
                 performance = self._calculate_selector_performance(selector, selection_files)
                 if performance:
                     selector_performance[selector] = performance
-            
+
             # If no live performance data found, use historical points
             if not selector_performance or all(p['total_matches'] == 0 for p in selector_performance.values()):
                 selector_performance = self._create_historical_performance_data()
-            
+
             # Calculate overall statistics
             league_stats = self._calculate_league_statistics(selector_performance)
-            
+
             # Apply view filter
             filtered_selectors = self._apply_view_filter(selector_performance, view_filter)
-            
-            return {
+
+            result = {
                 'success': True,
                 'selectors': filtered_selectors,
                 'weekly_stats': self._calculate_weekly_statistics(selector_performance, selection_files),
                 'season_stats': league_stats,
                 'last_updated': datetime.now().isoformat(),
                 'current_week': self._get_current_week_number(),
-                'season_year': datetime.now().year
+                'season_year': datetime.now().year,
+                'memory_usage_mb': self._memory_usage
             }
-            
+
+            # Cache the result
+            self._cache_league_data(cache_key, result)
+
+            # Monitor memory usage after calculations
+            self._update_memory_usage()
+
+            return result
+
         except Exception as e:
             logger.error(f"Error calculating league data: {e}")
             return self._create_error_league_data(str(e))
@@ -206,50 +248,55 @@ class SelectorsLeague:
     
     def _calculate_match_result(self, selector_data: Dict[str, Any], match_date: datetime) -> Optional[Dict[str, Any]]:
         """
-        Calculate the result of a selector's match prediction
-        
+        Calculate the result of a selector's match prediction with rate limiting
+
         Args:
             selector_data: Selector's match data
             match_date: Date of the match
-            
+
         Returns:
             Dictionary containing result information
         """
         try:
-            # Get live results to determine actual outcome
-            live_results = data_manager.load_live_results()
-            
-            if not live_results:
-                # No live results available yet, check if this match date has finished
-                # For now, return None if no live results (matches still in progress)
+            # Use rate-limited scraper for league calculations
+            scraper = BBCSportScraper(rate_limit=2.0, monthly_limit=500)  # More conservative limits for league calculations
+            bbc_results = scraper.scrape_live_scores(match_date.strftime('%Y-%m-%d'))
+
+            if not bbc_results or not bbc_results.get('live_matches'):
+                # No BBC results available yet, check if this match date has finished
+                # For now, return None if no results (matches still in progress)
                 return None
-            
+
             # Find matching result for this selector's match
             home_team = selector_data.get('home_team', '').strip()
             away_team = selector_data.get('away_team', '').strip()
-            
+
             matching_result = None
-            for result in live_results:
+            for result in bbc_results['live_matches']:
                 result_home = result.get('home_team', '').strip()
                 result_away = result.get('away_team', '').strip()
-                
+
                 # Check for exact match (home-away or away-home)
                 if ((result_home == home_team and result_away == away_team) or
                     (result_home == away_team and result_away == home_team)):
                     matching_result = result
                     break
-            
+
             if not matching_result:
                 return None
-            
+
+            # Only process finished matches
+            if matching_result.get('status') != 'finished':
+                return None
+
             home_score = matching_result.get('home_score', 0)
             away_score = matching_result.get('away_score', 0)
-            
-            # Determine BTTS result
+
+            # Determine result based on all outcomes (BTTS, single goal, no goal)
             both_scored = home_score > 0 and away_score > 0
             only_one_scored = (home_score > 0) != (away_score > 0)
             neither_scored = home_score == 0 and away_score == 0
-            
+
             if both_scored:
                 return {
                     'points': self.BTTS_SUCCESS_POINTS,
@@ -268,9 +315,9 @@ class SelectorsLeague:
                     'description': 'No Goals',
                     'final_score': f'{home_score}-{away_score}'
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error calculating match result: {e}")
             return None
@@ -433,6 +480,97 @@ class SelectorsLeague:
         }
 
 
+    def _is_sunday_after_saturday_matches(self) -> bool:
+        """
+        Check if it's Sunday and Saturday matches have finished.
+        Returns True if today is Sunday and Saturday's matches are complete.
+        """
+        try:
+            now = datetime.now()
+            today = now.date()
+
+            # Check if today is Sunday (weekday 6)
+            if now.weekday() != 6:  # Monday=0, Sunday=6
+                return False
+
+            # Check if Saturday matches are complete
+            # Saturday is yesterday (weekday 5)
+            saturday = today - timedelta(days=1)
+
+            # Use BBC scraper to check if Saturday matches are finished
+            scraper = BBCSportScraper(rate_limit=2.0, monthly_limit=500)
+            saturday_results = scraper.scrape_live_scores(saturday.strftime('%Y-%m-%d'))
+
+            if not saturday_results or not saturday_results.get('live_matches'):
+                # No results available, assume matches not finished
+                return False
+
+            # Check if all matches are finished
+            all_finished = all(
+                match.get('status') == 'finished'
+                for match in saturday_results['live_matches']
+            )
+
+            return all_finished
+
+        except Exception as e:
+            logger.error(f"Error checking Sunday after Saturday matches: {e}")
+            return False
+
+    def _ensure_cache_dir(self):
+        """Ensure cache directory exists"""
+        try:
+            os.makedirs(self.CACHE_DIR, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Error creating cache directory: {e}")
+
+    def _get_cache_key(self, view_filter: str) -> str:
+        """Generate cache key for league data"""
+        content = f"league_data_{view_filter}_{datetime.now().strftime('%Y-%m-%d')}"
+        return hashlib.md5(content.encode()).hexdigest()
+
+    def _get_cached_league_data(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """Retrieve cached league data if valid"""
+        try:
+            cache_file = os.path.join(self.CACHE_DIR, f"{cache_key}.json")
+            if not os.path.exists(cache_file):
+                return None
+
+            # Check TTL
+            file_age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(cache_file))
+            if file_age.total_seconds() > self.LEAGUE_CACHE_TTL:
+                logger.info("League cache expired")
+                return None
+
+            with open(cache_file, 'r') as f:
+                cached_data = json.load(f)
+
+            logger.info("Using cached league data")
+            return cached_data
+
+        except Exception as e:
+            logger.error(f"Error reading league cache: {e}")
+            return None
+
+    def _cache_league_data(self, cache_key: str, data: Dict[str, Any]):
+        """Cache league data"""
+        try:
+            cache_file = os.path.join(self.CACHE_DIR, f"{cache_key}.json")
+            with open(cache_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            logger.info("Cached league data")
+        except Exception as e:
+            logger.error(f"Error caching league data: {e}")
+
+    def _update_memory_usage(self):
+        """Update current memory usage in MB"""
+        try:
+            process = psutil.Process()
+            self._memory_usage = process.memory_info().rss / 1024 / 1024  # Convert to MB
+        except Exception as e:
+            logger.error(f"Error monitoring memory usage: {e}")
+            self._memory_usage = 0
+
     def _create_historical_performance_data(self) -> Dict[str, Any]:
         """
         Create performance data from historical points for all selectors
@@ -440,26 +578,26 @@ class SelectorsLeague:
         """
         try:
             selector_performance = {}
-            
+
             for selector_name in self.selectors:
                 # Get historical points for this selector
                 historical_points = self.historical_points.get(selector_name, 0)
-                
+
                 # Estimate matches based on points (roughly 1 match per week)
                 # Since we have historical points, estimate they played regularly
                 estimated_matches = max(1, abs(historical_points) // 3)  # Rough estimate
                 btts_successes = max(0, historical_points // 3)  # 3 points per BTTS success
                 no_goal_results = max(0, abs(min(0, historical_points)) // 3)  # 3 points lost per no goal
                 single_goal_results = estimated_matches - btts_successes - no_goal_results
-                
+
                 # Calculate BTTS percentage
                 btts_percentage = (btts_successes / estimated_matches * 100) if estimated_matches > 0 else 0
-                
+
                 # Create recent form entries (simulated)
                 recent_form = []
                 total_weeks = min(10, estimated_matches)  # Show up to 10 recent entries
                 points_per_week = historical_points / total_weeks if total_weeks > 0 else 0
-                
+
                 for i in range(total_weeks):
                     week_date = datetime.now() - timedelta(weeks=total_weeks-i)
                     form_entry = {
@@ -471,7 +609,7 @@ class SelectorsLeague:
                         'final_score': '2-1' if round(points_per_week) == 3 else '1-0' if round(points_per_week) == 0 else '0-0'
                     }
                     recent_form.append(form_entry)
-                
+
                 selector_performance[selector_name] = {
                     'selector_name': selector_name,
                     'total_points': historical_points,
@@ -486,9 +624,9 @@ class SelectorsLeague:
                     'average_weekly_points': historical_points / estimated_matches if estimated_matches > 0 else 0,
                     'weekly_points': {}  # No specific weekly breakdown for historical data
                 }
-            
+
             return selector_performance
-            
+
         except Exception as e:
             logger.error(f"Error creating historical performance data: {e}")
             return {}
