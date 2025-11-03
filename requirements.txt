@@ -24,6 +24,9 @@ structlog>=23.1.0
 marshmallow>=3.20.0
 bleach>=6.0.0
 
+# System Monitoring
+psutil>=5.9.0
+
 # Database (if needed for future features)
 sqlalchemy>=2.0.0
 

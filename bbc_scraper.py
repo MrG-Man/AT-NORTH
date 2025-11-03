@@ -26,13 +26,14 @@ NEW FUNCTIONALITY:
 - Dynamic URL construction using BBC's date-based format
 
 LEAGUES SUPPORTED:
-- Premier League, English Championship, League One, League Two, National League
-- Scottish Premiership, Championship, League One, League Two
+- All English Leagues: Premier League, English Championship, League One, League Two, National League
+- All Scottish Leagues: Scottish Premiership, Scottish Championship, Scottish League One, Scottish League Two
 
 SCRAPING METHODOLOGY:
 - Uses https://www.bbc.co.uk/sport/football/scores-fixtures/YYYY-MM-DD
 - Parses ALL matches from this single page
-- Filters to only supported leagues
+- Filters to only supported leagues (all English and Scottish leagues)
+- Strictly enforces 15:00 kickoff times for fixtures
 - Handles both fixture and live score modes
 
 USAGE:
@@ -101,35 +102,32 @@ class BBCSportScraper:
     MODE_FIXTURES = "fixtures"
     MODE_LIVE = "live"
 
-    # League configurations with their BBC Sport URLs
+    # League configurations with their BBC Sport URLs - ALL English and Scottish leagues supported (including National League)
     LEAGUES = {
         # English Leagues
         "Premier League": "/sport/football/premier-league/scores-fixtures",
         "English Championship": "/sport/football/championship/scores-fixtures",
-        "English League One": "/sport/football/league-one/scores-fixtures",
-        "English League Two": "/sport/football/league-two/scores-fixtures",
-        "English National League": "/sport/football/national-league/scores-fixtures",
+        "League One": "/sport/football/league-one/scores-fixtures",
+        "League Two": "/sport/football/league-two/scores-fixtures",
+        "National League": "/sport/football/national-league/scores-fixtures",
 
         # Scottish Leagues
         "Scottish Premiership": "/sport/football/scottish-premiership/scores-fixtures",
         "Scottish Championship": "/sport/football/scottish-championship/scores-fixtures",
         "Scottish League One": "/sport/football/scottish-league-one/scores-fixtures",
         "Scottish League Two": "/sport/football/scottish-league-two/scores-fixtures",
-
-        # Example: Adding a new league would be this simple:
-        # "Italian Serie A": "/sport/football/italian-serie-a/scores-fixtures",
-        # "German Bundesliga": "/sport/football/german-bundesliga/scores-fixtures",
-        # "French Ligue 1": "/sport/football/french-ligue-1/scores-fixtures",
     }
 
-    def __init__(self, rate_limit: float = 1.0):
+    def __init__(self, rate_limit: float = 1.0, monthly_limit: int = 1000):
         """
         Initialize the BBC Sport scraper.
 
         Args:
             rate_limit: Minimum seconds between requests (default: 1.0)
+            monthly_limit: Maximum API requests per month (default: 1000)
         """
         self.rate_limit = rate_limit
+        self.monthly_limit = monthly_limit
         self.last_request_time = 0
         self.session = requests.Session()
 
@@ -201,6 +199,69 @@ class BBCSportScraper:
             # Fallback to base URL if date parsing fails
             return f"{self.BASE_URL}{league_url}"
 
+    def _load_monthly_usage(self) -> int:
+        """
+        Load current month's API usage from cache.
+
+        Returns:
+            Current usage count for the month
+        """
+        try:
+            current_month = datetime.now().strftime("%Y-%m")
+            usage_file = os.path.join("cache", f"bbc_api_usage_{current_month}.json")
+
+            if os.path.exists(usage_file):
+                with open(usage_file, 'r') as f:
+                    data = json.load(f)
+                    return data.get('usage', 0)
+            return 0
+        except Exception as e:
+            logger.error(f"Error loading monthly usage: {e}")
+            return 0
+
+    def _check_monthly_limit(self) -> bool:
+        """
+        Check if current usage is below monthly limit.
+
+        Returns:
+            True if usage is below limit, False if limit exceeded
+        """
+        current_usage = self._load_monthly_usage()
+        if current_usage >= self.monthly_limit:
+            logger.warning(f"Monthly API limit exceeded: {current_usage}/{self.monthly_limit}")
+            return False
+        return True
+
+    def _increment_usage(self):
+        """Increment and save monthly usage count."""
+        try:
+            current_month = datetime.now().strftime("%Y-%m")
+            usage_file = os.path.join("cache", f"bbc_api_usage_{current_month}.json")
+
+            # Load current usage
+            current_usage = self._load_monthly_usage()
+
+            # Increment usage
+            current_usage += 1
+
+            # Save updated usage
+            usage_data = {
+                'month': current_month,
+                'usage': current_usage,
+                'last_updated': datetime.now().isoformat()
+            }
+
+            # Ensure cache directory exists
+            os.makedirs("cache", exist_ok=True)
+
+            with open(usage_file, 'w') as f:
+                json.dump(usage_data, f, indent=2)
+
+            logger.debug(f"API usage incremented to {current_usage} for {current_month}")
+
+        except Exception as e:
+            logger.error(f"Error incrementing usage: {e}")
+
     def _enforce_rate_limit(self):
         """Enforce rate limiting between requests."""
         current_time = time.time()
@@ -265,6 +326,69 @@ class BBCSportScraper:
         else:
             logger.error(f"Failed to cache BBC data for {date} - {league_name}")
 
+    def _get_cached_html(self, url: str) -> Optional[BeautifulSoup]:
+        """
+        Check for cached HTML files with 24-hour max age.
+
+        Args:
+            url: The URL to check for cached HTML
+
+        Returns:
+            BeautifulSoup object if valid cache exists, None otherwise
+        """
+        try:
+            # Generate cache filename based on URL MD5 hash
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            cache_file = os.path.join("cache", f"html_{url_hash}.html")
+
+            if not os.path.exists(cache_file):
+                return None
+
+            # Check if cache is within 24 hours
+            file_mod_time = os.path.getmtime(cache_file)
+            cache_age = time.time() - file_mod_time
+            max_age = 24 * 60 * 60  # 24 hours in seconds
+
+            if cache_age > max_age:
+                logger.debug(f"HTML cache expired for {url} (age: {cache_age:.0f}s > {max_age}s)")
+                return None
+
+            # Load and parse cached HTML
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+
+            logger.info(f"Using cached HTML for {url} (age: {cache_age:.0f}s)")
+            return BeautifulSoup(html_content, 'html.parser')
+
+        except Exception as e:
+            logger.error(f"Error reading cached HTML for {url}: {e}")
+            return None
+
+    def _cache_html(self, url: str, html_content: str):
+        """
+        Save HTML responses to cache files.
+
+        Args:
+            url: The URL the HTML was retrieved from
+            html_content: The HTML content to cache
+        """
+        try:
+            # Generate cache filename based on URL MD5 hash
+            url_hash = hashlib.md5(url.encode()).hexdigest()
+            cache_file = os.path.join("cache", f"html_{url_hash}.html")
+
+            # Ensure cache directory exists
+            os.makedirs("cache", exist_ok=True)
+
+            # Save HTML content
+            with open(cache_file, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            logger.debug(f"Cached HTML for {url} to {cache_file}")
+
+        except Exception as e:
+            logger.error(f"Error caching HTML for {url}: {e}")
+
     def _validate_scraped_matches(self, matches: List[Dict]) -> bool:
         """Validate scraped match data to prevent caching corrupted HTML content.
 
@@ -311,17 +435,18 @@ class BBCSportScraper:
             # CRITICAL VALIDATION: Ensure league is in our supported leagues
             league_name = match.get('league', '')
             if league_name not in self.LEAGUES.keys():
-                logger.error(f"Found unsupported league '{league_name}' in match data. Supported leagues: {list(self.LEAGUES.keys())}")
+                logger.error(f"DEBUG: Validation failed - unsupported league '{league_name}' in match data. Supported leagues: {list(self.LEAGUES.keys())}")
                 return False
 
             # Validate team names are reasonable (not international teams or other invalid entries)
             home_team = match.get('home_team', '').strip()
             away_team = match.get('away_team', '').strip()
 
-            # Check for international teams or non-football teams
+            # Check for international teams or non-football teams - updated for all English and Scottish leagues
             invalid_indicators = [
                 'wales', 'australia', 'ukraine', 'kharkiv', 'lviv', 'vynnyky',
-                'miami', 'nashville', 'sc', 'kyiv', 'polissya', 'cherkasy'
+                'miami', 'nashville', 'kyiv', 'polissya', 'cherkasy',
+                'international', 'world cup', 'euro', 'olympic'
             ]
 
             home_lower = home_team.lower()
@@ -342,7 +467,7 @@ class BBCSportScraper:
 
     def _make_request(self, url: str) -> Optional[BeautifulSoup]:
         """
-        Make HTTP request with error handling and rate limiting.
+        Make HTTP request with error handling, rate limiting, monthly usage tracking, and HTML caching.
 
         Args:
             url: Full URL to request
@@ -350,6 +475,16 @@ class BBCSportScraper:
         Returns:
             BeautifulSoup object or None if request failed
         """
+        # First, check for cached HTML
+        cached_html = self._get_cached_html(url)
+        if cached_html is not None:
+            return cached_html
+
+        # Check monthly limit before making request
+        if not self._check_monthly_limit():
+            logger.error(f"Monthly API limit exceeded. Cannot make request to {url}")
+            return None
+
         self._enforce_rate_limit()
 
         try:
@@ -357,7 +492,16 @@ class BBCSportScraper:
             response = self.session.get(url, timeout=30)
             response.raise_for_status()
 
-            return BeautifulSoup(response.content, 'html.parser')
+            # Increment usage after successful request
+            self._increment_usage()
+
+            # Parse HTML content
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Cache the HTML content for future use
+            self._cache_html(url, str(response.content, 'utf-8'))
+
+            return soup
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Request failed for {url}: {e}")
@@ -696,6 +840,7 @@ class BBCSportScraper:
 
             # Parse all matches from the unified page
             matches = self._parse_unified_matches(soup, mode)
+            logger.info(f"DEBUG: Parsed {len(matches)} total matches from BBC page")
 
             # Filter to only our supported leagues
             supported_matches = []
@@ -703,6 +848,8 @@ class BBCSportScraper:
                 league_name = match.get('league', '')
                 if league_name in self.LEAGUES.keys():
                     supported_matches.append(match)
+                else:
+                    logger.info(f"DEBUG: Filtering out match from unsupported league '{league_name}': {match.get('home_team', 'Unknown')} vs {match.get('away_team', 'Unknown')}")
 
             # Cache the results
             if supported_matches:
@@ -842,13 +989,13 @@ class BBCSportScraper:
         """
         matches = []
         
-        # BBC to internal league name mapping
+        # BBC to internal league name mapping - ALL English and Scottish leagues supported
         league_mapping = {
             'Premier League': 'Premier League',
             'Championship': 'English Championship',
-            'League One': 'English League One',
-            'League Two': 'English League Two',
-            'National League': 'English National League',
+            'League One': 'League One',
+            'League Two': 'League Two',
+            'National League': 'National League',
             'Scottish Premiership': 'Scottish Premiership',
             'Scottish Championship': 'Scottish Championship',
             'Scottish League One': 'Scottish League One',
@@ -865,6 +1012,7 @@ class BBCSportScraper:
                 
                 # Skip if not a supported league
                 if not league_name:
+                    logger.info(f"DEBUG: Skipping unsupported league '{bbc_league_name}' from BBC data")
                     continue
                 
                 # Process events in this group
@@ -923,16 +1071,21 @@ class BBCSportScraper:
                 kickoff = event['date']['time']
             elif 'time' in event and 'displayTimeUK' in event['time']:
                 kickoff = event['time']['displayTimeUK']
-            
+
+            # CRITICAL: Only include matches at exactly 15:00 for fixtures
+            if kickoff != "15:00":
+                logger.info(f"DEBUG: Skipping match {home_team} vs {away_team} in {league_name} due to kickoff time {kickoff} (not 15:00)")
+                return None
+
             # Extract venue if available
             venue = event.get('venue', {}).get('name', 'TBC') if 'venue' in event else "TBC"
-            
+
             # Extract scores and status for live matches
             home_score = 0
             away_score = 0
             status = "not_started"
             match_time = "0'"
-            
+
             if 'status' in event:
                 event_status = event['status']
                 if event_status in ['InProgress', 'Live']:
@@ -944,13 +1097,13 @@ class BBCSportScraper:
                 elif event_status == 'HalfTime':
                     status = "halftime"
                     match_time = "HT"
-            
+
             # Extract scores if available
             if 'home' in event and 'score' in event['home']:
                 home_score = int(event['home']['score'])
             if 'away' in event and 'score' in event['away']:
                 away_score = int(event['away']['score'])
-            
+
             return {
                 "league": league_name,
                 "home_team": home_team,
@@ -1059,10 +1212,10 @@ class BBCSportScraper:
                 len(home_team) > 50 or len(away_team) > 50):
                 return None
 
-            # CRITICAL: Filter out international teams and invalid matches
+            # CRITICAL: Filter out international teams and invalid matches - updated for all English and Scottish leagues (including National League)
             invalid_indicators = [
                 'wales', 'australia', 'ukraine', 'kharkiv', 'lviv', 'vynnyky',
-                'miami', 'nashville', 'sc', 'kyiv', 'polissya', 'cherkasy',
+                'miami', 'nashville', 'kyiv', 'polissya', 'cherkasy',
                 'international', 'world cup', 'euro', 'olympic'
             ]
 
@@ -1107,12 +1260,10 @@ class BBCSportScraper:
 
     def _identify_league_from_element(self, element) -> Optional[str]:
         """Identify the league name from a match element."""
-        # Look for league headers above the match
+        # Look for league headers above the match - ALL English and Scottish leagues supported
         league_headers = [
-            "Premier League", "English Championship", "English League One",
-            "English League Two", "English National League",
-            "Scottish Premiership", "Scottish Championship",
-            "Scottish League One", "Scottish League Two"
+            "Premier League", "English Championship", "League One", "League Two", "National League",
+            "Scottish Premiership", "Scottish Championship", "Scottish League One", "Scottish League Two"
         ]
 
         # Check the element text for league names
@@ -1127,12 +1278,11 @@ class BBCSportScraper:
         """Identify the league name from the broader context around a match element."""
         # NEW APPROACH: Use document structure to find league headers
         # Look backwards from the match element to find the nearest league header
+        # ALL English and Scottish leagues supported
 
         league_headers = [
-            "Premier League", "English Championship", "English League One",
-            "English League Two", "English National League",
-            "Scottish Premiership", "Scottish Championship",
-            "Scottish League One", "Scottish League Two"
+            "Premier League", "English Championship", "League One", "League Two", "National League",
+            "Scottish Premiership", "Scottish Championship", "Scottish League One", "Scottish League Two"
         ]
 
         # Start from the match element and look backwards through the document

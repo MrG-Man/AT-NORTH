@@ -12,14 +12,14 @@ backlog = 2048
 
 # Worker processes
 workers = 1
-worker_class = "sync"
+worker_class = 'sync'
 worker_connections = 50
 timeout = 30
 keepalive = 2
 
 # Restart workers after this many requests to prevent memory leaks
-max_requests = 100
-max_requests_jitter = 10
+max_requests = 500
+max_requests_jitter = 25
 
 # Logging
 loglevel = os.getenv('LOG_LEVEL', 'info').lower()
@@ -45,11 +45,10 @@ certfile = None
 raw_env = [
     f'FLASK_ENV={os.getenv("FLASK_ENV", "production")}',
     f'SECRET_KEY={os.getenv("SECRET_KEY", "")}',
-    f'SOFASCORE_API_KEY={os.getenv("SOFASCORE_API_KEY", "")}',
 ]
 
 # Preload application for better performance
-preload_app = False
+preload_app = True
 
 # Worker timeout and limits
 graceful_timeout = 30

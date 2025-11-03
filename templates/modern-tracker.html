@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTTS Accumulator Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-tracker.css') }}">
+</head>
+<body>
+    <div class="mobile-container">
+        <!-- Header -->
+        <header class="mobile-header">
+            <div class="header-left">
+                <h1 class="app-title">⚽ BTTS Accumulator</h1>
+                <p class="app-subtitle">Live Tracker</p>
+            </div>
+            <a href="/selectors-league" class="selectors-league-link">
+                <span class="link-icon">🏆</span>
+                <span class="link-text">Selectors League</span>
+            </a>
+        </header>
+
+        <!-- Connection Status Bar -->
+        <div class="connection-status-bar" id="connectionStatus">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
+            <div class="last-update">
+                <span class="update-label">Last Update:</span>
+                <span class="update-time" id="lastUpdateTime">Never</span>
+            </div>
+        </div>
+
+        <!-- Matches List -->
+        <main class="matches-list" id="liveMatchesGrid">
+            <!-- Live match cards will be dynamically inserted -->
+        </main>
+
+        <!-- Loading State -->
+        <div class="loading-state" id="trackerLoading">
+            <div class="loading-spinner"></div>
+            <p>Loading live data...</p>
+        </div>
+
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="{{ url_for('static', filename='js/modern-tracker.js') }}"></script>
+</body>
+</html>

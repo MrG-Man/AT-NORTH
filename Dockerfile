@@ -1,7 +1,4 @@
 # Football Predictions App Dockerfile
-# Resource limits for Northflank Free Tier:
-# - Memory: 512MB limit, 256MB reservation
-# - CPU: 1.0 vCPU limit, 0.5 vCPU reservation
 FROM python:3.11-slim
 
 # Set environment variables

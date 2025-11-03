@@ -28,13 +28,15 @@ Updated: 2025 - Enhanced with safer weekly transition logic and selection-only t
 
 import os
 import sys
+import json
 import logging
 import traceback
 from datetime import datetime, timedelta
 from logging.handlers import RotatingFileHandler
+import psutil
 
 # Import Flask and extensions
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -78,8 +80,7 @@ app.config.from_object(config)
 
 # Log critical environment variables (without exposing secrets)
 print(f"Environment check - HOST: {config.HOST}, PORT: {config.PORT}")
-print(f"Feature flags - BBC: {config.ENABLE_BBC_SCRAPER}, Sofascore: {config.ENABLE_SOFA_SCORE_API}")
-print(f"API Keys configured - Sofascore: {'Yes' if config.SOFASCORE_API_KEY else 'No'}")
+print(f"Feature flags - BBC: {config.ENABLE_BBC_SCRAPER}")
 
 # Setup CORS
 CORS(app, origins=config.CORS_ORIGINS, supports_credentials=True)
@@ -156,10 +157,6 @@ def validate_critical_components():
     else:
         print("✓ Data manager module available")
 
-    if config.SOFASCORE_API_KEY:
-        print("✓ Sofascore API key configured")
-    else:
-        print("⚠ Sofascore API key not configured - live scores will be disabled")
 
     if config.SECRET_KEY:
         print("✓ Flask secret key configured")
@@ -209,26 +206,17 @@ except ImportError:
     BTTS_DETECTOR_AVAILABLE = False
     app.logger.warning("BTTS detector not available")
 
-# Import Sofascore Live Scores API for live tracking
+# Import Selectors League for integration
 try:
-    from sofascore_optimized import SofascoreLiveScoresAPI
-    # Only initialize if API key is available
-    if config.SOFASCORE_API_KEY:
-        sofascore_api = SofascoreLiveScoresAPI(api_key=config.SOFASCORE_API_KEY)
-        SOFASCORE_AVAILABLE = True
-        app.logger.info("Sofascore API loaded successfully")
-    else:
-        sofascore_api = None
-        SOFASCORE_AVAILABLE = False
-        app.logger.warning("Sofascore API key not configured - live scores disabled")
+    from selectors_league import selectors_league  # noqa: F401
+    SELECTORS_LEAGUE_AVAILABLE = True
+    app.logger.info("Selectors league loaded successfully")
 except ImportError:
-    sofascore_api = None
-    SOFASCORE_AVAILABLE = False
-    app.logger.warning("Sofascore API not available")
-except Exception as e:
-    sofascore_api = None
-    SOFASCORE_AVAILABLE = False
-    app.logger.error(f"Error initializing Sofascore API: {e}")
+    SELECTORS_LEAGUE_AVAILABLE = False
+    app.logger.warning("Selectors league not available")
+    selectors_league = None
+
+# BBC live scores integration active
 
 # Panel members in assignment order
 SELECTORS = [
@@ -263,7 +251,9 @@ def get_current_prediction_week():
 
         target_date = now.date() + timedelta(days=days_until_saturday)
 
-    return target_date.strftime('%Y-%m-%d')
+    week_str = target_date.strftime('%Y-%m-%d')
+    print(f"[DEBUG] get_current_prediction_week() - Current day: {current_day}, Target date: {week_str}")
+    return week_str
 
 def find_next_available_fixtures_date(target_date=None, max_days_ahead=14):
     """Find the next date that has available fixtures, within a reasonable range.
@@ -311,102 +301,27 @@ def find_next_available_fixtures_date(target_date=None, max_days_ahead=14):
     app.logger.warning(f"No fixtures found within {max_days_ahead} days of {target_date}")
     return None
 
-def map_selections_to_sofascore_ids(selections):
-    """
-    Map current week's selections to Sofascore match IDs.
-
-    Args:
-        selections (dict): Current week's selections
-
-    Returns:
-        dict: Mapping of selector names to Sofascore match IDs
-    """
-    if not SOFASCORE_AVAILABLE or not sofascore_api:
-        return {}
-
-    try:
-        # Get current week's BBC fixtures for team name matching
-        week = get_current_prediction_week()
-
-        # Check if data_manager is available before calling methods
-        if data_manager is None:
-            print("ERROR: data_manager is None - cannot get BBC fixtures")
-            return {}
-
-        bbc_fixtures = data_manager.get_bbc_fixtures(week)
-
-        if not bbc_fixtures:
-            return {}
-
-        # Get live scores from Sofascore to find match IDs
-        live_data = sofascore_api.get_live_scores_batch()
-
-        if not live_data or 'events' not in live_data:
-            return {}
-
-        match_mapping = {}
-
-        # For each selection, find the corresponding Sofascore match ID
-        for selector, match_data in selections.items():
-            home_team = match_data.get('home_team')
-            away_team = match_data.get('away_team')
-
-            if not home_team or not away_team:
-                continue
-
-            # Find matching Sofascore event
-            for event in live_data['events']:
-                sofascore_home = event.get('homeTeam', {}).get('name', '')
-                sofascore_away = event.get('awayTeam', {}).get('name', '')
-
-                # Try exact match first
-                if (sofascore_home == home_team and sofascore_away == away_team):
-                    match_mapping[selector] = {
-                        'sofascore_id': event.get('id'),
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'status': event.get('status', {}).get('type', 'not_started')
-                    }
-                    break
-
-                # Try partial match (for team name variations)
-                if (home_team.lower() in sofascore_home.lower() and
-                    away_team.lower() in sofascore_away.lower()):
-                    match_mapping[selector] = {
-                        'sofascore_id': event.get('id'),
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'status': event.get('status', {}).get('type', 'not_started'),
-                        'note': 'partial_match'
-                    }
-                    break
-
-        return match_mapping
-
-    except Exception as e:
-        print(f"Error mapping selections to Sofascore IDs: {e}")
-        return {}
 
 def load_selections():
     """Load existing selections for the current week using DataManager."""
     week = get_current_prediction_week()
+    app.logger.info(f"[DEBUG] load_selections() - Loading selections for week: {week}")
 
     # Check if data_manager is available before calling methods
     if data_manager is None:
-        print("ERROR: data_manager is None - cannot load selections")
-        return {
-            "selectors": {},
-            "matches": [],
-            "last_updated": None,
-            "ephemeral_mode": True,
-            "warning": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart."
-        }
+        app.logger.error("ERROR: data_manager is None - cannot load selections")
+        return {"selectors": {}, "matches": [], "last_updated": None}
 
     # Load selections using DataManager
+    app.logger.info(f"[DEBUG] load_selections() - Calling data_manager.load_weekly_selections({week})")
     selections = data_manager.load_weekly_selections(week)
+    app.logger.info(f"[DEBUG] load_selections() - DataManager returned: {selections}")
 
     if selections is None:
+        app.logger.info(f"[DEBUG] load_selections() - No selections found for week {week}")
         return {"selectors": {}, "matches": [], "last_updated": None}
+
+    app.logger.info(f"[DEBUG] load_selections() - Found {len(selections)} selections: {list(selections.keys())}")
 
     # Convert DataManager format to expected format for template
     # Add assigned_at field for template compatibility
@@ -418,39 +333,67 @@ def load_selections():
             enhanced_match_data['assigned_at'] = datetime.now().isoformat()
         enhanced_selections[selector] = enhanced_match_data
 
-    return {
+    result = {
         "selectors": enhanced_selections,
         "matches": [],  # This will be populated from scraper data
         "last_updated": None  # Could be enhanced to track this
     }
+    app.logger.info(f"[DEBUG] load_selections() - Returning: {len(enhanced_selections)} enhanced selections")
+    return result
 
 def save_selections(selections_data):
     """Save selections using DataManager."""
     week = get_current_prediction_week()
+    app.logger.info(f"[DEBUG] save_selections() - Saving selections for week: {week}")
+    app.logger.info(f"[DEBUG] save_selections() - Input data: {selections_data}")
 
     # Check if data_manager is available before calling methods
     if data_manager is None:
-        print("ERROR: data_manager is None - cannot save selections")
-        app.logger.warning("Attempted to save selections in ephemeral mode - data will be lost on restart")
+        app.logger.error("ERROR: data_manager is None - cannot save selections")
         return False
 
     # Extract just the selections part for DataManager
     selections_only = selections_data.get("selectors", {})
+    app.logger.info(f"[DEBUG] save_selections() - Extracted {len(selections_only)} selections: {list(selections_only.keys())}")
 
     # Save using DataManager
+    app.logger.info(f"[DEBUG] save_selections() - Calling data_manager.save_weekly_selections() with {len(selections_only)} selections")
     success = data_manager.save_weekly_selections(selections_only, week)
+    app.logger.info(f"[DEBUG] save_selections() - DataManager save returned: {success}")
 
     if success:
         # Update the last_updated timestamp in the original data
         selections_data["last_updated"] = datetime.now().isoformat()
+        app.logger.info(f"[DEBUG] save_selections() - Successfully saved selections for week {week}")
         return True
     else:
+        app.logger.error(f"[DEBUG] save_selections() - Failed to save selections for week {week}")
         return False
 
 @app.route('/')
 def index():
-    """Redirect to admin interface."""
-    return app.redirect('/admin')
+    """Redirect to modern tracker interface."""
+    return redirect('/modern')
+
+@app.route('/modern')
+def modern_tracker():
+    """Modern single-page interface for Acca Tracker."""
+    try:
+        return render_template('modern-tracker.html')
+    except Exception as e:
+        app.logger.error(f"Error loading modern tracker interface: {str(e)}")
+        return f"Error loading modern tracker interface: {str(e)}", 500
+
+
+@app.route('/selectors-league')
+def selectors_league_page():
+    """Selectors League page showing historical performance."""
+    try:
+        return render_template('selectors-league.html')
+    except Exception as e:
+        app.logger.error(f"Error loading selectors league interface: {str(e)}")
+        return f"Error loading selectors league interface: {str(e)}", 500
+
 
 @app.route('/admin')
 def admin():
@@ -475,44 +418,48 @@ def admin():
         matches = []
         if data_manager is not None:
             try:
-                app.logger.info(f"Attempting to load cached fixtures for {target_date}")
+                app.logger.info(f"[DEBUG] Admin route: Attempting to load cached fixtures for {target_date}")
                 cached_fixtures = data_manager.get_bbc_fixtures(target_date)
-                app.logger.info(f"DataManager returned: {len(cached_fixtures) if cached_fixtures else 0} fixtures")
+                app.logger.info(f"[DEBUG] Admin route: DataManager returned: {len(cached_fixtures) if cached_fixtures else 0} fixtures")
 
                 if cached_fixtures:
                     # Filter for 15:00 matches only
                     matches = [match for match in cached_fixtures if match.get('kickoff') == '15:00']
-                    app.logger.info(f"Filtered to {len(matches)} 15:00 matches for {target_date}")
+                    app.logger.info(f"[DEBUG] Admin route: Filtered to {len(matches)} 15:00 matches for {target_date}")
 
-                    # Debug: Show sample matches
-                    if matches:
-                        sample_match = matches[0]
-                        app.logger.info(f"Sample match: {sample_match['league']} - {sample_match['home_team']} vs {sample_match['away_team']} at {sample_match['kickoff']}")
+                    # Debug: Show all matches
+                    for i, match in enumerate(matches):
+                        app.logger.info(f"[DEBUG] Admin route: Match {i+1}: {match['league']} - {match['home_team']} vs {match['away_team']} at {match['kickoff']}")
                 else:
-                    app.logger.warning(f"No cached fixtures found for {target_date}")
+                    app.logger.warning(f"[DEBUG] Admin route: No cached fixtures found for {target_date}")
             except Exception as e:
-                app.logger.error(f"Error loading cached fixtures: {e}")
+                app.logger.error(f"[DEBUG] Admin route: Error loading cached fixtures: {e}")
                 import traceback
-                app.logger.error(f"Traceback: {traceback.format_exc()}")
+                app.logger.error(f"[DEBUG] Admin route: Traceback: {traceback.format_exc()}")
 
         # If no cached data, fall back to scraping
         if not matches:
             if BBCSportScraper is not None:
                 try:
+                    app.logger.info(f"[DEBUG] Admin route: Starting BBC scraping for {target_date}")
                     scraper = BBCSportScraper()
                     scraper_result = scraper.scrape_saturday_3pm_fixtures()
                     matches = scraper_result.get("matches_3pm", [])
                     target_date = scraper_result.get("next_saturday", target_date)
-                    app.logger.info(f"Scraped {len(matches)} matches for {target_date}")
+                    app.logger.info(f"[DEBUG] Admin route: Scraped {len(matches)} matches for {target_date}")
+
+                    # Debug: Show all scraped matches
+                    for i, match in enumerate(matches):
+                        app.logger.info(f"[DEBUG] Admin route: Scraped match {i+1}: {match['league']} - {match['home_team']} vs {match['away_team']} at {match['kickoff']}")
 
                     # If no matches found, try to find an alternative date
                     if not matches:
-                        app.logger.info(f"No matches found for {target_date}, searching for alternative date")
+                        app.logger.info(f"[DEBUG] Admin route: No matches found for {target_date}, searching for alternative date")
                         try:
                             alternative_date = find_next_available_fixtures_date(target_date, max_days_ahead=14)
 
                             if alternative_date and alternative_date != target_date:
-                                app.logger.info(f"Found alternative date with matches: {alternative_date}")
+                                app.logger.info(f"[DEBUG] Admin route: Found alternative date with matches: {alternative_date}")
                                 try:
                                     # Re-scrape for the alternative date
                                     alt_scraper_result = scraper.scrape_unified_bbc_matches(alternative_date, 'fixtures')
@@ -532,17 +479,18 @@ def admin():
                                         }
                                         matches = alt_matches
                                         target_date = alternative_date
+                                        app.logger.info(f"[DEBUG] Admin route: Using alternative date {alternative_date} with {len(matches)} matches")
                                 except Exception as e:
-                                    app.logger.warning(f"Error scraping alternative date {alternative_date}: {e}")
+                                    app.logger.warning(f"[DEBUG] Admin route: Error scraping alternative date {alternative_date}: {e}")
                                     # Continue with empty matches list
                         except Exception as e:
-                            app.logger.warning(f"Error finding alternative date: {e}")
+                            app.logger.warning(f"[DEBUG] Admin route: Error finding alternative date: {e}")
                             # Continue with empty matches list
                 except Exception as e:
-                    app.logger.error(f"Error with BBC scraper: {e}")
+                    app.logger.error(f"[DEBUG] Admin route: Error with BBC scraper: {e}")
                     # Continue with empty matches list - don't fail completely
             else:
-                app.logger.warning("BBC scraper not available - showing admin interface without live data")
+                app.logger.warning("[DEBUG] Admin route: BBC scraper not available - showing admin interface without live data")
 
         # Load existing selections with enhanced error handling
         if data_manager is None:
@@ -574,7 +522,9 @@ def admin():
             </body></html>
             """, 500
 
+        app.logger.info(f"[DEBUG] Admin route: Loading selections for week {target_date}")
         selections_data = load_selections()
+        app.logger.info(f"[DEBUG] Admin route: Loaded {len(selections_data.get('selectors', {}))} selections")
 
         # Get available selectors (those not yet assigned)
         assigned_selectors = set(selections_data.get("selectors", {}).keys())
@@ -658,24 +608,59 @@ def admin():
 
 @app.route('/api/assign', methods=['POST'])
 def assign_match():
-    """API endpoint for assigning a match to a selector."""
+    """API endpoint for assigning a match to a selector with enhanced error handling and debugging."""
+    # Initialize variables for error handling
+    match_id = None
+    selector = None
+    timestamp = datetime.now().isoformat()
+    attempt = 1
+
     try:
-        app.logger.info("[API DEBUG] /api/assign endpoint called")
+        print("[DEBUG] /api/assign endpoint called")
         data = request.get_json()
-        app.logger.info(f"[API DEBUG] Request data: {data}")
+        print(f"[DEBUG] /api/assign - Request data: {data}")
 
         match_id = data.get('match_id')
         selector = data.get('selector')
-        app.logger.info(f"[API DEBUG] Extracted match_id: {match_id}, selector: {selector}")
+        timestamp = data.get('timestamp', timestamp)
+        attempt = data.get('attempt', attempt)
 
+        print(f"[DEBUG] /api/assign - Extracted match_id: {match_id}, selector: {selector}, attempt: {attempt}")
+
+        # Enhanced validation with detailed error messages
         if not match_id or not selector:
-            app.logger.error("[API DEBUG] Missing match_id or selector")
-            return jsonify({"success": False, "error": "Missing match_id or selector"}), 400
+            error_msg = "Missing required parameters"
+            print(f"[DEBUG] /api/assign - {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "debug_info": {
+                    "received_match_id": match_id,
+                    "received_selector": selector,
+                    "timestamp": timestamp,
+                    "attempt": attempt
+                }
+            }), 400
+
+        # Validate selector against allowed list
+        if selector not in SELECTORS:
+            error_msg = f"Invalid selector: {selector}"
+            print(f"[DEBUG] /api/assign - {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg,
+                "debug_info": {
+                    "valid_selectors": SELECTORS,
+                    "received_selector": selector,
+                    "timestamp": timestamp,
+                    "attempt": attempt
+                }
+            }), 400
 
         # Load current selections
-        app.logger.info("[API DEBUG] Loading current selections")
+        print("[DEBUG] /api/assign - Loading current selections")
         selections_data = load_selections()
-        app.logger.info(f"[API DEBUG] Current selections loaded: {len(selections_data.get('selectors', {}))} selectors")
+        print(f"[DEBUG] /api/assign - Current selections loaded: {len(selections_data.get('selectors', {}))} selectors")
 
         # Check if selector already has a match - allow reassignment
         if selector in selections_data.get("selectors", {}):
@@ -764,16 +749,47 @@ def assign_match():
 
         if save_result:
             app.logger.info(f"[API DEBUG] Assignment successful for {selector}")
-            return jsonify({"success": True, "message": f"Match assigned to {selector}"})
+            return jsonify({
+                "success": True,
+                "message": f"Match assigned to {selector}",
+                "debug_info": {
+                    "selector": selector,
+                    "match_id": match_id,
+                    "timestamp": timestamp,
+                    "attempt": attempt,
+                    "save_result": save_result
+                }
+            })
         else:
-            app.logger.error("[API DEBUG] Failed to save selections")
-            return jsonify({"success": False, "error": "Failed to save selections"}), 500
+            app.logger.error(f"[API DEBUG] Failed to save selections for {selector}")
+            return jsonify({
+                "success": False,
+                "error": "Failed to save selections",
+                "debug_info": {
+                    "selector": selector,
+                    "match_id": match_id,
+                    "timestamp": timestamp,
+                    "attempt": attempt,
+                    "data_manager_available": data_manager is not None
+                }
+            }), 500
 
     except Exception as e:
         app.logger.error(f"[API DEBUG] Exception in assign_match: {str(e)}")
         import traceback
         app.logger.error(f"[API DEBUG] Traceback: {traceback.format_exc()}")
-        return jsonify({"success": False, "error": str(e)}), 500
+
+        return jsonify({
+            "success": False,
+            "error": "Internal server error",
+            "debug_info": {
+                "exception_type": type(e).__name__,
+                "exception_message": str(e),
+                "timestamp": timestamp,
+                "attempt": attempt,
+                "traceback_available": True
+            }
+        }), 500
 
 @app.route('/api/unassign', methods=['POST'])
 def unassign_match():
@@ -805,12 +821,106 @@ def unassign_match():
 
 @app.route('/api/selections')
 def get_selections():
-    """API endpoint to get current selections."""
+    """API endpoint to get current selections with enhanced data structure."""
     try:
         selections_data = load_selections()
-        return jsonify(selections_data)
+
+        # Ensure consistent data structure
+        enhanced_data = {
+            "selectors": {},
+            "matches": [],
+            "last_updated": datetime.now().isoformat(),
+            "statistics": {
+                "total_selectors": len(SELECTORS),
+                "selected_count": len(selections_data.get("selectors", {})),
+                "completion_percentage": 0
+            }
+        }
+
+        # Process selections with null safety
+        if selections_data and "selectors" in selections_data:
+            selected_count = 0
+            for selector, match_data in selections_data["selectors"].items():
+                if match_data and isinstance(match_data, dict):
+                    # Ensure all required fields are present with defaults
+                    enhanced_match = {
+                        "home_team": match_data.get("home_team"),
+                        "away_team": match_data.get("away_team"),
+                        "prediction": match_data.get("prediction", "TBD"),
+                        "confidence": match_data.get("confidence", 5),
+                        "assigned_at": match_data.get("assigned_at", datetime.now().isoformat()),
+                        "league": match_data.get("league", "Unknown"),
+                        "status": match_data.get("status", "not_started")
+                    }
+                    enhanced_data["selectors"][selector] = enhanced_match
+                    selected_count += 1
+
+            # Add completion percentage
+            enhanced_data["statistics"]["completion_percentage"] = max(0, min(100, int((selected_count / len(SELECTORS)) * 100))) if len(SELECTORS) > 0 else 0
+
+        return jsonify(enhanced_data)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Enhanced error handling with fallback data structure
+        fallback_data = {
+            "selectors": {},
+            "matches": [],
+            "last_updated": datetime.now().isoformat(),
+            "statistics": {
+                "total_selectors": len(SELECTORS),
+                "selected_count": 0,
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e)
+            },
+            "fallback": True
+        }
+        return jsonify(fallback_data), 500
+
+@app.route('/api/selections/<week>')
+def get_selections_for_week(week):
+    """API endpoint to get selections for a specific week."""
+    try:
+        # Validate week format (YYYY-MM-DD)
+        try:
+            datetime.strptime(week, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({"error": "Invalid week format. Use YYYY-MM-DD"}), 400
+
+        # Check if data_manager is available before calling methods
+        if data_manager is None:
+            return jsonify({"error": "Data manager not available"}), 500
+
+        # Load selections for the specific week
+        selections = data_manager.load_weekly_selections(week)
+
+        if selections is None:
+            return jsonify({
+                "selectors": {},
+                "matches": [],
+                "last_updated": None,
+                "message": f"No selections found for week {week}"
+            }), 404
+
+        # Convert DataManager format to expected format for API
+        enhanced_selections = {}
+        for selector, match_data in selections.items():
+            enhanced_match_data = match_data.copy()
+            # Add assigned_at field if missing (for API compatibility)
+            if 'assigned_at' not in enhanced_match_data:
+                enhanced_match_data['assigned_at'] = datetime.now().isoformat()
+            enhanced_selections[selector] = enhanced_match_data
+
+        result = {
+            "selectors": enhanced_selections,
+            "matches": [],  # This will be populated from scraper data if needed
+            "last_updated": None,  # Could be enhanced to track this
+            "week": week
+        }
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({"error": f"Error getting selections for week {week}: {str(e)}"}), 500
 
 @app.route('/api/override', methods=['POST'])
 def override_selections():
@@ -841,44 +951,57 @@ def override_selections():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/report-error', methods=['POST'])
+def report_error():
+    """API endpoint for client-side error reporting and debugging."""
+    try:
+        error_data = request.get_json()
+
+        # Log the error report for debugging
+        app.logger.error(f"Client-side error report received: {error_data}")
+
+        # Store error report for analysis
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        error_filename = f"client_error_{timestamp}.json"
+
+        # Save to logs directory for analysis
+        error_filepath = os.path.join('logs', error_filename)
+        with open(error_filepath, 'w', encoding='utf-8') as f:
+            json.dump(error_data, f, indent=2, ensure_ascii=False)
+
+        return jsonify({
+            "success": True,
+            "message": "Error report received and logged",
+            "error_id": timestamp
+        })
+
+    except Exception as e:
+        app.logger.error(f"Failed to process error report: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to process error report"
+        }), 500
+
 # ===== BTTS TRACKER ROUTES =====
 
-@app.route('/btts-tracker')
-def btts_tracker():
-    """Main BTTS accumulator tracker interface."""
-    try:
-        # Load current week's selections for context
-        week = get_current_prediction_week()
 
-        # Check if data_manager is available before calling methods
-        if data_manager is None:
-            print("ERROR: data_manager is None - cannot load selections for BTTS tracker")
-            return render_template('tracker.html', ephemeral_mode=True, error_message="Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.")
 
-        selections = data_manager.load_weekly_selections(week)
 
-        return render_template('tracker.html')
 
-    except Exception as e:
-        return f"Error loading BTTS tracker: {str(e)}", 500
+def get_team_color(team_name):
+    """Get a color for the team logo based on team name."""
+    colors = [
+        '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+        '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+        '#F8C471', '#82E0AA', '#F1948A', '#85C1E9', '#D7BDE2'
+    ]
+    # Simple hash based on team name
+    hash_value = sum(ord(c) for c in team_name) % len(colors)
+    return colors[hash_value]
 
-@app.route('/btts-tracker-test')
-def btts_tracker_test():
-    """Test version of BTTS tracker with mock data for UI testing."""
-    try:
-        return render_template('test_tracker.html')
 
-    except Exception as e:
-        return f"Error loading BTTS tracker test: {str(e)}", 500
 
-@app.route('/mockup')
-def mockup():
-    """Mockup page showing the final live page vision."""
-    try:
-        return render_template('mockup.html')
 
-    except Exception as e:
-        return f"Error loading mockup: {str(e)}", 500
 
 @app.route('/api/btts-status')
 def get_btts_status():
@@ -886,31 +1009,17 @@ def get_btts_status():
     try:
         # Load current week's selections
         week = get_current_prediction_week()
+        print(f"[DEBUG] /api/btts-status - Loading BTTS status for week: {week}")
+
+        # Get target date for live scores
+        target_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
 
         # Check if data_manager is available before calling methods
         if data_manager is None:
             print("ERROR: data_manager is None - cannot load selections for BTTS status")
             return jsonify({
-                "status": "EPHEMERAL_MODE",
-                "message": "Application is running in ephemeral mode - data storage is not available and will be lost on restart",
-                "matches": {},
-                "statistics": {
-                    "total_matches_tracked": 0,
-                    "btts_detected": 0,
-                    "btts_pending": 0,
-                    "last_update": datetime.now().isoformat(),
-                    "ephemeral_mode": True,
-                    "note": "Data is stored in memory only and will be lost when the application restarts"
-                },
-                "last_updated": datetime.now().isoformat()
-            })
-
-        selections = data_manager.load_weekly_selections(week)
-
-        if not selections:
-            return jsonify({
-                "status": "NO_SELECTIONS",
-                "message": "No selections found for current week",
+                "status": "ERROR",
+                "message": "Data manager not available",
                 "matches": {},
                 "statistics": {
                     "total_matches_tracked": 0,
@@ -921,227 +1030,200 @@ def get_btts_status():
                 "last_updated": datetime.now().isoformat()
             })
 
-        # Map selections to Sofascore match IDs
-        match_mapping = map_selections_to_sofascore_ids(selections)
+        print(f"[DEBUG] /api/btts-status - Calling data_manager.load_weekly_selections({week})")
+        selections = data_manager.load_weekly_selections(week)
+        print(f"[DEBUG] /api/btts-status - DataManager returned: {len(selections) if selections else 0} selections")
 
-        # Get live scores and detect events
+        if not selections:
+            print(f"[DEBUG] /api/btts-status - No selections found for week {week}")
+            # Generate placeholders for all selectors
+            placeholder_matches = {}
+            for selector in SELECTORS:
+                placeholder_matches[selector] = {
+                    "home_team": None,
+                    "away_team": None,
+                    "home_score": 0,
+                    "away_score": 0,
+                    "status": "no_selection",
+                    "league": None,
+                    "btts_detected": False,
+                    "placeholder": True,
+                    "placeholder_text": "Awaiting Match Assignment",
+                    "last_updated": datetime.now().isoformat()
+                }
+            return jsonify({
+                "status": "NO_SELECTIONS",
+                "message": "No selections found for current week",
+                "matches": placeholder_matches,
+                "statistics": {
+                    "total_matches_tracked": len(SELECTORS),
+                    "btts_detected": 0,
+                    "btts_pending": len(SELECTORS),
+                    "last_update": datetime.now().isoformat()
+                },
+                "last_updated": datetime.now().isoformat()
+            })
+
+        # Populate matches_data with selections first
         matches_data = {}
+        for selector, match_data in selections.items():
+            matches_data[selector] = {
+                "home_team": match_data.get('home_team'),
+                "away_team": match_data.get('away_team'),
+                "home_score": 0,
+                "away_score": 0,
+                "status": "not_started",
+                "league": "Unknown",
+                "btts_detected": False,
+                "last_updated": datetime.now().isoformat()
+            }
+
+        # Add placeholders for unselected selectors
+        for selector in SELECTORS:
+            if selector not in matches_data:
+                matches_data[selector] = {
+                    "home_team": None,
+                    "away_team": None,
+                    "home_score": 0,
+                    "away_score": 0,
+                    "status": "no_selection",
+                    "league": None,
+                    "btts_detected": False,
+                    "placeholder": True,
+                    "placeholder_text": "Awaiting Match Assignment",
+                    "last_updated": datetime.now().isoformat()
+                }
+
+        # Get live scores from BBC for BTTS detection
+        try:
+            if BBCSportScraper is not None:
+                scraper = BBCSportScraper()
+                live_result = scraper.scrape_live_scores(target_date)
+                all_live_matches = live_result.get("live_matches", [])
+                app.logger.info(f"[DEBUG] /api/btts-status - Scraped {len(all_live_matches)} live matches from BBC")
+            else:
+                all_live_matches = []
+                app.logger.warning("[DEBUG] /api/btts-status - BBC scraper not available")
+        except Exception as e:
+            app.logger.error(f"[DEBUG] /api/btts-status - Error scraping BBC live scores: {e}")
+            all_live_matches = []
+
+        # Match selections with BBC live data
+        for selector, match_data in selections.items():
+            home_team = match_data.get('home_team')
+            away_team = match_data.get('away_team')
+
+            # Find matching live data
+            live_match = None
+            for bbc_match in all_live_matches:
+                if (bbc_match.get('home_team') == home_team and
+                    bbc_match.get('away_team') == away_team):
+                    live_match = bbc_match
+                    break
+
+            if live_match:
+                # Use BBC live data
+                home_score = live_match.get('home_score', 0)
+                away_score = live_match.get('away_score', 0)
+                status = live_match.get('status', 'not_started')
+                match_time = live_match.get('match_time', '0\'')
+                league = live_match.get('league', 'Unknown')
+                btts_detected = home_score > 0 and away_score > 0
+
+                matches_data[selector] = {
+                    "home_team": home_team,
+                    "away_team": away_team,
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "status": status,
+                    "match_time": match_time,
+                    "league": league,
+                    "btts_detected": btts_detected,
+                    "last_updated": datetime.now().isoformat()
+                }
+                app.logger.debug(f"[DEBUG] /api/btts-status - Updated {selector}: {home_team} vs {away_team} - {home_score}-{away_score} ({status})")
+            else:
+                # No live data found - set to not_started
+                matches_data[selector] = {
+                    "home_team": match_data.get('home_team'),
+                    "away_team": match_data.get('away_team'),
+                    "home_score": 0,
+                    "away_score": 0,
+                    "status": "not_started",
+                    "league": "Unknown",
+                    "btts_detected": False,
+                    "last_updated": datetime.now().isoformat()
+                }
+
+        # Calculate statistics for all matches
         btts_detected = 0
         btts_pending = 0
+        for selector, match_data in matches_data.items():
+            if match_data.get('btts_detected'):
+                btts_detected += 1
+            elif match_data.get('status') in ['not_started', 'live', 'no_selection']:
+                btts_pending += 1
 
-        if SOFASCORE_AVAILABLE and sofascore_api:
-            try:
-                # Get live scores data
-                live_data = sofascore_api.get_live_scores_batch()
-
-                if live_data and 'events' in live_data:
-                    # Detect match events (including BTTS)
-                    detected_events = sofascore_api.detect_match_events(live_data)
-
-                    # Process each tracked match
-                    for selector, match_info in match_mapping.items():
-                        sofascore_id = match_info.get('sofascore_id')
-                        if not sofascore_id:
-                            continue
-
-                        # Find the match in live data
-                        match_event = None
-                        for event in live_data['events']:
-                            if event.get('id') == sofascore_id:
-                                match_event = event
-                                break
-
-                        if match_event:
-                            home_score = match_event.get('homeScore', {}).get('current', 0)
-                            away_score = match_event.get('awayScore', {}).get('current', 0)
-                            status = match_event.get('status', {}).get('type', 'not_started')
-
-                            # Check if BTTS occurred
-                            is_btts = home_score > 0 and away_score > 0
-
-                            matches_data[selector] = {
-                                "sofascore_id": sofascore_id,
-                                "home_team": match_info.get('home_team'),
-                                "away_team": match_info.get('away_team'),
-                                "home_score": home_score,
-                                "away_score": away_score,
-                                "status": status,
-                                "btts_detected": is_btts,
-                                "league": match_info.get('league', 'Unknown League'),
-                                "last_updated": datetime.now().isoformat()
-                            }
-
-                            if is_btts:
-                                btts_detected += 1
-                            else:
-                                btts_pending += 1
-
-            except Exception as e:
-                print(f"Error getting live scores: {e}")
-                # Continue with cached/empty data if Sofascore fails
-
-        # Get API usage statistics
+        # Sofascore integration removed - no API stats
         api_stats = {}
-        if SOFASCORE_AVAILABLE and sofascore_api:
-            api_stats = sofascore_api.get_usage_stats()
+
+        # Calculate completion percentage
+        total_selectors = len(SELECTORS)
+        selected_matches = len([m for m in matches_data.values() if m.get('status') != 'no_selection'])
+        completion_percentage = max(0, min(100, int((selected_matches / total_selectors) * 100))) if total_selectors > 0 else 0
 
         return jsonify({
             "status": "ACTIVE" if matches_data else "NO_LIVE_DATA",
-            "message": f"Tracking {len(matches_data)} matches with Sofascore integration",
+            "message": f"Tracking {len(matches_data)} matches with BBC live scores",
             "matches": matches_data,
             "statistics": {
-                "total_matches_tracked": len(match_mapping),
+                "total_matches_tracked": len(matches_data),
                 "btts_detected": btts_detected,
                 "btts_pending": btts_pending,
+                "btts_failed": len(matches_data) - btts_detected - btts_pending,
                 "last_update": datetime.now().isoformat(),
-                "sofascore_api_available": SOFASCORE_AVAILABLE,
                 "api_calls_used": api_stats.get('api_calls_used', 0),
-                "api_calls_target": api_stats.get('api_calls_target', '12-16')
+                "api_calls_target": api_stats.get('api_calls_target', '12-16'),
+                "completion_percentage": completion_percentage
             },
             "last_updated": datetime.now().isoformat(),
-            "sofascore_integration": {
-                "enabled": SOFASCORE_AVAILABLE,
-                "cache_hit_rate": api_stats.get('cache_hit_rate', 0),
-                "events_detected": api_stats.get('events_detected', 0)
-            }
         })
 
     except Exception as e:
-        return jsonify({
-            "error": f"Error getting BTTS status: {str(e)}",
-            "status": "ERROR",
-            "last_updated": datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/btts-status-test')
-def get_btts_status_test():
-    """Test API endpoint with mock BTTS data for UI testing."""
-    try:
-        # Mock data for testing the UI
-        mock_matches = {
-            "Glynny": {
-                "sofascore_id": 1234567,
-                "home_team": "Manchester City",
-                "away_team": "Everton",
-                "home_score": 2,
-                "away_score": 1,
-                "status": "live",
-                "btts_detected": True,
-                "league": "Premier League",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Eamonn Bone": {
-                "sofascore_id": 1234568,
-                "home_team": "Hull City",
-                "away_team": "Charlton Athletic",
-                "home_score": 1,
-                "away_score": 0,
-                "status": "finished",
-                "btts_detected": False,
-                "league": "Championship",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Mickey D": {
-                "sofascore_id": 1234569,
-                "home_team": "Burnley",
-                "away_team": "Leeds United",
+        # Enhanced error handling with fallback data structure
+        fallback_matches = {}
+        for selector in SELECTORS:
+            fallback_matches[selector] = {
+                "home_team": None,
+                "away_team": None,
                 "home_score": 0,
                 "away_score": 0,
-                "status": "live",
+                "status": "error",
+                "league": None,
                 "btts_detected": False,
-                "league": "Championship",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Rob Carney": {
-                "sofascore_id": 1234570,
-                "home_team": "St. Mirren",
-                "away_team": "Aberdeen",
-                "home_score": 1,
-                "away_score": 1,
-                "status": "finished",
-                "btts_detected": True,
-                "league": "Scottish Premiership",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Steve H": {
-                "sofascore_id": 1234571,
-                "home_team": "Shrewsbury Town",
-                "away_team": "Cambridge United",
-                "home_score": 0,
-                "away_score": 0,
-                "status": "not_started",
-                "btts_detected": False,
-                "league": "League One",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Danny": {
-                "sofascore_id": 1234572,
-                "home_team": "Derby County",
-                "away_team": "Queens Park Rangers",
-                "home_score": 0,
-                "away_score": 0,
-                "status": "not_started",
-                "btts_detected": False,
-                "league": "Championship",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Eddie Lee": {
-                "sofascore_id": 1234573,
-                "home_team": "Burton Albion",
-                "away_team": "Bolton Wanderers",
-                "home_score": 0,
-                "away_score": 0,
-                "status": "not_started",
-                "btts_detected": False,
-                "league": "League One",
-                "last_updated": datetime.now().isoformat()
-            },
-            "Fran Radar": {
-                "sofascore_id": 1234574,
-                "home_team": "Forfar Athletic",
-                "away_team": "Clyde",
-                "home_score": 0,
-                "away_score": 0,
-                "status": "not_started",
-                "btts_detected": False,
-                "league": "Scottish League Two",
+                "error": True,
+                "error_message": "Unable to load live data",
                 "last_updated": datetime.now().isoformat()
             }
-        }
-
-        # Calculate statistics
-        btts_detected = sum(1 for match in mock_matches.values() if match['btts_detected'])
-        btts_pending = sum(1 for match in mock_matches.values() if match['status'] in ['live', 'not_started'])
-        btts_failed = sum(1 for match in mock_matches.values() if match['status'] == 'finished' and not match['btts_detected'])
 
         return jsonify({
-            "status": "TEST_MODE",
-            "message": "Test data for UI demonstration",
-            "matches": mock_matches,
+            "status": "ERROR",
+            "message": "Unable to retrieve live BTTS status - showing fallback data",
+            "matches": fallback_matches,
             "statistics": {
-                "total_matches_tracked": len(mock_matches),
-                "btts_detected": btts_detected,
-                "btts_pending": btts_pending,
-                "btts_failed": btts_failed,
-                "last_update": datetime.now().isoformat(),
-                "sofascore_api_available": True,
-                "api_calls_used": 0,
-                "api_calls_target": "12-16"
+                "total_matches_tracked": len(SELECTORS),
+                "btts_detected": 0,
+                "btts_pending": 0,
+                "btts_failed": 0,
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e),
+                "last_update": datetime.now().isoformat()
             },
             "last_updated": datetime.now().isoformat(),
-            "sofascore_integration": {
-                "enabled": True,
-                "cache_hit_rate": 0,
-                "events_detected": len(mock_matches)
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": f"Error getting test BTTS status: {str(e)}",
-            "status": "ERROR",
-            "last_updated": datetime.now().isoformat()
+            "fallback": True
         }), 500
+
 
 @app.route('/api/btts-summary')
 def get_btts_summary():
@@ -1150,19 +1232,21 @@ def get_btts_summary():
         # Load current week's selections
         week = get_current_prediction_week()
 
+        # Get target date for live scores
+        target_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
         # Check if data_manager is available before calling methods
         if data_manager is None:
             print("ERROR: data_manager is None - cannot load selections for BTTS summary")
             return jsonify({
-                "status": "EPHEMERAL_MODE",
-                "message": "Application is running in ephemeral mode - data storage is not available and will be lost on restart",
+                "status": "ERROR",
+                "message": "Data manager not available",
                 "selectors": {},
                 "total_matches": 0,
                 "btts_success": 0,
                 "btts_pending": 0,
                 "btts_failed": 0,
-                "accumulator_status": "EPHEMERAL_MODE",
-                "note": "Data is stored in memory only and will be lost when the application restarts"
+                "accumulator_status": "ERROR"
             })
 
         selections = data_manager.load_weekly_selections(week)
@@ -1179,50 +1263,21 @@ def get_btts_summary():
                 "accumulator_status": "NO_DATA"
             })
 
-        # Get current BTTS status data (reuse the logic from get_btts_status)
+        # Get live scores from BBC for BTTS detection
         try:
-            # Load current week's selections
-            selections = data_manager.load_weekly_selections(week) if 'selections' not in locals() else selections
-
-            if not selections:
-                matches = {}
+            if BBCSportScraper is not None:
+                scraper = BBCSportScraper()
+                live_result = scraper.scrape_live_scores(target_date)
+                all_live_matches = live_result.get("live_matches", [])
+                app.logger.info(f"[DEBUG] /api/btts-summary - Scraped {len(all_live_matches)} live matches from BBC")
             else:
-                # Map selections to Sofascore match IDs
-                match_mapping = map_selections_to_sofascore_ids(selections)
-
-                # Get live scores and detect events
-                matches = {}
-                if SOFASCORE_AVAILABLE and sofascore_api:
-                    live_data = sofascore_api.get_live_scores_batch()
-                    if live_data and 'events' in live_data:
-                        for selector, match_info in match_mapping.items():
-                            sofascore_id = match_info.get('sofascore_id')
-                            if not sofascore_id:
-                                continue
-
-                            # Find the match in live data
-                            for event in live_data['events']:
-                                if event.get('id') == sofascore_id:
-                                    home_score = event.get('homeScore', {}).get('current', 0)
-                                    away_score = event.get('awayScore', {}).get('current', 0)
-                                    status = event.get('status', {}).get('type', 'not_started')
-
-                                    matches[selector] = {
-                                        "sofascore_id": sofascore_id,
-                                        "home_team": match_info.get('home_team'),
-                                        "away_team": match_info.get('away_team'),
-                                        "home_score": home_score,
-                                        "away_score": away_score,
-                                        "status": status,
-                                        "btts_detected": home_score > 0 and away_score > 0,
-                                        "last_updated": datetime.now().isoformat()
-                                    }
-                                    break
+                all_live_matches = []
+                app.logger.warning("[DEBUG] /api/btts-summary - BBC scraper not available")
         except Exception as e:
-            print(f"Error getting BTTS status for summary: {e}")
-            matches = {}
+            app.logger.error(f"[DEBUG] /api/btts-summary - Error scraping BBC live scores: {e}")
+            all_live_matches = []
 
-        # Calculate summary statistics
+        # Calculate summary statistics using BBC data
         selectors_data = {}
         btts_success = 0
         btts_pending = 0
@@ -1233,25 +1288,27 @@ def get_btts_summary():
                 home_team = match_data.get('home_team')
                 away_team = match_data.get('away_team')
 
-                # Find corresponding match in BTTS data
+                # Find corresponding match in BBC live data
                 match_info = None
-                for sel, info in matches.items():
-                    if (info.get('home_team') == home_team and
-                        info.get('away_team') == away_team):
-                        match_info = info
+                for bbc_match in all_live_matches:
+                    if (bbc_match.get('home_team') == home_team and
+                        bbc_match.get('away_team') == away_team):
+                        match_info = bbc_match
                         break
 
                 if match_info:
-                    is_btts = match_info.get('btts_detected', False)
+                    home_score = match_info.get('home_score', 0)
+                    away_score = match_info.get('away_score', 0)
                     status = match_info.get('status', 'not_started')
+                    is_btts = home_score > 0 and away_score > 0
 
                     selectors_data[selector] = {
                         "home_team": home_team,
                         "away_team": away_team,
                         "btts_detected": is_btts,
                         "status": status,
-                        "home_score": match_info.get('home_score', 0),
-                        "away_score": match_info.get('away_score', 0)
+                        "home_score": home_score,
+                        "away_score": away_score
                     }
 
                     if is_btts:
@@ -1287,7 +1344,7 @@ def get_btts_summary():
 
         return jsonify({
             "status": "ACTIVE",
-            "message": f"BTTS accumulator tracking active for {total_selections} selections",
+            "message": f"BTTS accumulator tracking active for {total_selections} selections with BBC live scores",
             "selectors": selectors_data,
             "total_matches": total_selections,
             "btts_success": btts_success,
@@ -1304,81 +1361,6 @@ def get_btts_summary():
             "accumulator_status": "ERROR"
         }), 500
 
-@app.route('/api/btts-start-monitoring', methods=['POST'])
-def start_btts_monitoring():
-    """API endpoint to start BTTS monitoring."""
-    try:
-        if not SOFASCORE_AVAILABLE or not sofascore_api:
-            return jsonify({
-                "success": False,
-                "error": "Sofascore API not available",
-                "status": "API_UNAVAILABLE",
-                "message": "Sofascore integration is not properly configured"
-            }), 503
-
-        # Get current usage stats
-        api_stats = sofascore_api.get_usage_stats()
-
-        # Check if we're within usage limits
-        if api_stats.get('api_calls_used', 0) >= 20:  # Safety buffer
-            return jsonify({
-                "success": False,
-                "error": "Monthly API limit exceeded",
-                "status": "LIMIT_EXCEEDED",
-                "message": f"API usage limit reached ({api_stats.get('api_calls_used', 0)}/16 calls this month)"
-            }), 429
-
-        return jsonify({
-            "success": True,
-            "message": "BTTS monitoring is active with Sofascore integration",
-            "status": "ACTIVE",
-            "api_usage": api_stats,
-            "note": "Monitoring uses ultra-conservative API usage (12-16 calls/month target)"
-        })
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/btts-stop-monitoring', methods=['POST'])
-def stop_btts_monitoring():
-    """API endpoint to stop BTTS monitoring."""
-    try:
-        # Since we're using event-driven updates, "stopping" just means
-        # the API won't be called until explicitly requested again
-        return jsonify({
-            "success": True,
-            "message": "BTTS monitoring uses event-driven updates - no persistent monitoring to stop",
-            "status": "EVENT_DRIVEN",
-            "note": "Live scores are fetched on-demand when endpoints are called"
-        })
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-@app.route('/api/btts-reset', methods=['POST'])
-def reset_btts_detector():
-    """API endpoint to reset BTTS detector state."""
-    try:
-        if SOFASCORE_AVAILABLE and sofascore_api:
-            # Clear Sofascore cache and reset statistics
-            sofascore_api.clear_cache()
-            sofascore_api.reset_monthly_usage()
-
-            return jsonify({
-                "success": True,
-                "message": "BTTS detector state reset successfully",
-                "status": "RESET",
-                "actions_performed": ["cache_cleared", "monthly_usage_reset"]
-            })
-        else:
-            return jsonify({
-                "success": True,
-                "message": "BTTS detector not available - no state to reset",
-                "status": "NOT_AVAILABLE"
-            })
-
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
 
 # ===== ENHANCED BBC SCRAPER API ENDPOINTS =====
 
@@ -1394,10 +1376,9 @@ def get_bbc_fixtures():
             print("ERROR: data_manager is None - cannot load selections for BBC fixtures")
             return jsonify({
                 "success": False,
-                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
-                "ephemeral_mode": True,
+                "error": "Data manager not available",
                 "last_updated": datetime.now().isoformat()
-            }), 200  # Return 200 since this is expected behavior in ephemeral mode
+            }), 500
 
         selections = data_manager.load_weekly_selections(week) or {}
 
@@ -1550,10 +1531,40 @@ def get_bbc_fixtures():
         })
 
     except Exception as e:
+        # Enhanced error handling with fallback data structure
+        fallback_matches = []
+        for selector in SELECTORS:
+            fallback_matches.append({
+                "selector": selector,
+                "home_team": None,
+                "away_team": None,
+                "league": None,
+                "kickoff": "15:00",
+                "prediction": "TBD",
+                "confidence": 5,
+                "is_selected": False,
+                "placeholder_text": "Error loading fixtures",
+                "error": True,
+                "last_updated": datetime.now().isoformat()
+            })
+
         return jsonify({
             "success": False,
             "error": f"Error getting BBC fixtures: {str(e)}",
-            "last_updated": datetime.now().isoformat()
+            "scraping_date": datetime.now().strftime("%Y-%m-%d"),
+            "next_saturday": get_current_prediction_week(),
+            "matches": fallback_matches,
+            "selected_matches": [],
+            "total_matches": 0,
+            "selected_count": 0,
+            "placeholder_count": len(SELECTORS),
+            "last_updated": datetime.now().isoformat(),
+            "fallback": True,
+            "statistics": {
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e)
+            }
         }), 500
 
 @app.route('/api/bbc-live-scores')
@@ -1571,10 +1582,9 @@ def get_bbc_live_scores():
             print("ERROR: data_manager is None - cannot load selections for BBC live scores")
             return jsonify({
                 "success": False,
-                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
-                "ephemeral_mode": True,
+                "error": "Data manager not available",
                 "last_updated": datetime.now().isoformat()
-            }), 200  # Return 200 since this is expected behavior in ephemeral mode
+            }), 500
 
         selections = data_manager.load_weekly_selections(week) or {}
 
@@ -1634,10 +1644,42 @@ def get_bbc_live_scores():
         })
 
     except Exception as e:
+        # Enhanced error handling with fallback data structure
+        fallback_matches = []
+        for selector in SELECTORS:
+            fallback_matches.append({
+                "selector": selector,
+                "home_team": None,
+                "away_team": None,
+                "home_score": 0,
+                "away_score": 0,
+                "status": "error",
+                "match_time": "—",
+                "league": None,
+                "prediction": "TBD",
+                "confidence": 5,
+                "is_selected": False,
+                "placeholder_text": "Error loading live scores",
+                "error": True,
+                "last_updated": datetime.now().isoformat()
+            })
+
         return jsonify({
             "success": False,
             "error": f"Error getting BBC live scores: {str(e)}",
-            "last_updated": datetime.now().isoformat()
+            "target_date": datetime.now().strftime('%Y-%m-%d'),
+            "scraping_date": datetime.now().strftime("%Y-%m-%d"),
+            "live_matches": fallback_matches,
+            "total_matches": 0,
+            "selected_count": 0,
+            "placeholder_count": len(SELECTORS),
+            "last_updated": datetime.now().isoformat(),
+            "fallback": True,
+            "statistics": {
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e)
+            }
         }), 500
 
 @app.route('/api/bbc-matches/<date>')
@@ -1765,10 +1807,327 @@ def get_bbc_matches_for_date(date):
         })
 
     except Exception as e:
+        # Enhanced error handling with fallback data structure
         return jsonify({
             "success": False,
             "error": f"Error getting BBC matches for date: {str(e)}",
+            "date": date,
+            "fixtures": [],
+            "live_scores": [],
+            "total_matches": 0,
+            "last_updated": datetime.now().isoformat(),
+            "fallback": True,
+            "statistics": {
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e)
+            }
+        }), 500
+
+@app.route('/api/modern-tracker-data')
+def get_modern_tracker_data():
+    """Enhanced API endpoint specifically for modern interface with unified data structure."""
+    try:
+        # Get current week's selections
+        week = get_current_prediction_week()
+
+        # Check if data_manager is available before calling methods
+        if data_manager is None:
+            print("ERROR: data_manager is None - cannot load selections for modern tracker data")
+            return jsonify({
+                "success": False,
+                "error": "Data manager not available",
+                "last_updated": datetime.now().isoformat(),
+                "fallback": True
+            }), 500
+
+        selections = data_manager.load_weekly_selections(week)
+
+        # Get current live scores for selected matches
+        target_date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+
+        # Initialize response structure
+        response_data = {
+            "success": True,
+            "target_date": target_date,
+            "week": week,
+            "selectors": SELECTORS,
+            "selections": {},
+            "matches": {},
+            "statistics": {
+                "total_selectors": len(SELECTORS),
+                "selected_count": 0,
+                "placeholder_count": len(SELECTORS),
+                "btts_detected": 0,
+                "btts_pending": 0,
+                "btts_failed": 0,
+                "completion_percentage": 0,
+                "live_matches": 0,
+                "finished_matches": 0,
+                "not_started_matches": 0
+            },
             "last_updated": datetime.now().isoformat()
+        }
+
+        # Process selections with enhanced data structure
+        if selections:
+            selected_count = 0
+            for selector in SELECTORS:
+                if selector in selections:
+                    match_data = selections[selector]
+                    if match_data and isinstance(match_data, dict):
+                        # Enhanced match data structure
+                        enhanced_match = {
+                            "home_team": match_data.get("home_team"),
+                            "away_team": match_data.get("away_team"),
+                            "prediction": match_data.get("prediction", "TBD"),
+                            "confidence": match_data.get("confidence", 5),
+                            "assigned_at": match_data.get("assigned_at", datetime.now().isoformat()),
+                            "league": match_data.get("league", "Unknown"),
+                            "status": "not_started",
+                            "home_score": 0,
+                            "away_score": 0,
+                            "match_time": "0'",
+                            "btts_detected": False,
+                            "is_selected": True,
+                            "last_updated": datetime.now().isoformat()
+                        }
+                        response_data["selections"][selector] = enhanced_match
+                        response_data["matches"][selector] = enhanced_match
+                        selected_count += 1
+                else:
+                    # Placeholder for unselected selector
+                    placeholder_match = {
+                        "home_team": None,
+                        "away_team": None,
+                        "prediction": "TBD",
+                        "confidence": 0,
+                        "assigned_at": None,
+                        "league": None,
+                        "status": "no_selection",
+                        "home_score": 0,
+                        "away_score": 0,
+                        "match_time": "—",
+                        "btts_detected": False,
+                        "is_selected": False,
+                        "placeholder_text": "Awaiting Match Assignment",
+                        "last_updated": datetime.now().isoformat()
+                    }
+                    response_data["matches"][selector] = placeholder_match
+
+            # Update statistics
+            response_data["statistics"]["selected_count"] = selected_count
+            response_data["statistics"]["placeholder_count"] = len(SELECTORS) - selected_count
+            response_data["statistics"]["completion_percentage"] = max(0, min(100, int((selected_count / len(SELECTORS)) * 100))) if len(SELECTORS) > 0 else 0
+
+        # Get live scores from BBC for BTTS detection
+        try:
+            if BBCSportScraper is not None:
+                scraper = BBCSportScraper()
+                live_result = scraper.scrape_live_scores(target_date)
+                all_live_matches = live_result.get("live_matches", [])
+                app.logger.info(f"[DEBUG] /api/modern-tracker-data - Scraped {len(all_live_matches)} live matches from BBC")
+            else:
+                all_live_matches = []
+                app.logger.warning("[DEBUG] /api/modern-tracker-data - BBC scraper not available")
+        except Exception as e:
+            app.logger.error(f"[DEBUG] /api/modern-tracker-data - Error scraping BBC live scores: {e}")
+            all_live_matches = []
+
+        # Update matches with BBC live data
+        for selector in SELECTORS:
+            if selector in response_data["matches"]:
+                match_data = response_data["matches"][selector]
+                if match_data.get('is_selected'):
+                    home_team = match_data.get('home_team')
+                    away_team = match_data.get('away_team')
+
+                    # Find matching live data
+                    live_match = None
+                    for bbc_match in all_live_matches:
+                        if (bbc_match.get('home_team') == home_team and
+                            bbc_match.get('away_team') == away_team):
+                            live_match = bbc_match
+                            break
+
+                    if live_match:
+                        # Update with BBC data
+                        home_score = live_match.get('home_score', 0)
+                        away_score = live_match.get('away_score', 0)
+                        status = live_match.get('status', 'not_started')
+                        match_time = live_match.get('match_time', '0\'')
+                        league = live_match.get('league', 'Unknown')
+                        btts_detected = home_score > 0 and away_score > 0
+
+                        response_data["matches"][selector].update({
+                            "home_score": home_score,
+                            "away_score": away_score,
+                            "status": status,
+                            "match_time": match_time,
+                            "league": league,
+                            "btts_detected": btts_detected,
+                            "last_updated": datetime.now().isoformat()
+                        })
+                        app.logger.debug(f"[DEBUG] /api/modern-tracker-data - Updated {selector}: {home_team} vs {away_team} - {home_score}-{away_score} ({status})")
+
+        # Calculate final statistics
+        btts_detected = sum(1 for match in response_data["matches"].values() if match.get('btts_detected'))
+        btts_pending = sum(1 for match in response_data["matches"].values() if match.get('is_selected') and match.get('status') in ['not_started', 'live'])
+        btts_failed = sum(1 for match in response_data["matches"].values() if match.get('status') == 'finished' and not match.get('btts_detected'))
+        live_matches = sum(1 for match in response_data["matches"].values() if match.get('status') == 'live')
+        finished_matches = sum(1 for match in response_data["matches"].values() if match.get('status') == 'finished')
+        not_started_matches = sum(1 for match in response_data["matches"].values() if match.get('status') == 'not_started')
+
+        response_data["statistics"].update({
+            "btts_detected": btts_detected,
+            "btts_pending": btts_pending,
+            "btts_failed": btts_failed,
+            "live_matches": live_matches,
+            "finished_matches": finished_matches,
+            "not_started_matches": not_started_matches
+        })
+
+        return jsonify(response_data)
+
+    except Exception as e:
+        # Enhanced error handling with fallback data structure
+        fallback_matches = {}
+        for selector in SELECTORS:
+            fallback_matches[selector] = {
+                "home_team": None,
+                "away_team": None,
+                "prediction": "TBD",
+                "confidence": 0,
+                "assigned_at": None,
+                "league": None,
+                "status": "error",
+                "home_score": 0,
+                "away_score": 0,
+                "match_time": "—",
+                "btts_detected": False,
+                "is_selected": False,
+                "placeholder_text": "Error loading data",
+                "error": True,
+                "last_updated": datetime.now().isoformat()
+            }
+
+        return jsonify({
+            "success": False,
+            "error": f"Error getting modern tracker data: {str(e)}",
+            "target_date": datetime.now().strftime('%Y-%m-%d'),
+            "week": get_current_prediction_week(),
+            "selectors": SELECTORS,
+            "selections": {},
+            "matches": fallback_matches,
+            "statistics": {
+                "total_selectors": len(SELECTORS),
+                "selected_count": 0,
+                "placeholder_count": len(SELECTORS),
+                "btts_detected": 0,
+                "btts_pending": 0,
+                "btts_failed": 0,
+                "completion_percentage": 0,
+                "live_matches": 0,
+                "finished_matches": 0,
+                "not_started_matches": 0,
+                "error": True,
+                "error_message": str(e)
+            },
+            "last_updated": datetime.now().isoformat(),
+            "fallback": True
+        }), 500
+
+@app.route('/api/selectors-league')
+def get_selectors_league():
+    """API endpoint to get selectors league data with historical performance."""
+    try:
+        # Check if selectors league module is available
+        if not SELECTORS_LEAGUE_AVAILABLE or selectors_league is None:
+            return jsonify({
+                "success": False,
+                "error": "Selectors league module not available",
+                "last_updated": datetime.now().isoformat()
+            }), 500
+
+        # Get view filter from query parameters
+        view_filter = request.args.get('view', 'overall')
+
+        # Calculate league data
+        league_data = selectors_league.calculate_league_data(view_filter)
+
+        return jsonify(league_data)
+
+    except Exception as e:
+        app.logger.error(f"Error getting selectors league data: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Error getting selectors league data: {str(e)}",
+            "last_updated": datetime.now().isoformat()
+        }), 500
+
+
+
+@app.route('/api/resource-usage')
+def get_resource_usage():
+    """API endpoint to get resource monitoring data."""
+    try:
+        # Get memory usage
+        memory = psutil.virtual_memory()
+        memory_usage_mb = round(memory.used / (1024 * 1024), 2)
+        memory_limit_mb = 1024  # Fixed limit as specified
+
+        # Get storage usage from data_manager
+        storage_usage_mb = 0
+        if data_manager is not None:
+            storage_stats = data_manager.get_storage_stats()
+            total_storage_size = sum(
+                category_stats.get('size', 0)
+                for category_stats in storage_stats.values()
+            )
+            storage_usage_mb = round(total_storage_size / (1024 * 1024), 2)
+        storage_limit_mb = 10240  # Fixed limit as specified
+
+        # Get API usage from cache
+        api_calls_used = 0
+        try:
+            with open('cache/live_api_usage.json', 'r') as f:
+                api_data = json.load(f)
+                api_calls_used = api_data.get('calls', 0)
+        except (FileNotFoundError, json.JSONDecodeError):
+            api_calls_used = 0
+
+        api_calls_limit = 12  # Fixed limit as specified
+
+        # Generate warnings array
+        warnings = []
+        if memory_usage_mb > (memory_limit_mb * 0.8):
+            warnings.append("High memory usage")
+        if storage_usage_mb > (storage_limit_mb * 0.8):
+            warnings.append("High storage usage")
+        if api_calls_used >= api_calls_limit:
+            warnings.append("API call limit reached")
+
+        return jsonify({
+            "memory_usage_mb": memory_usage_mb,
+            "memory_limit_mb": memory_limit_mb,
+            "storage_usage_mb": storage_usage_mb,
+            "storage_limit_mb": storage_limit_mb,
+            "api_calls_used": api_calls_used,
+            "api_calls_limit": api_calls_limit,
+            "warnings": warnings
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error getting resource usage: {str(e)}")
+        return jsonify({
+            "error": f"Error getting resource usage: {str(e)}",
+            "memory_usage_mb": 0,
+            "memory_limit_mb": 1024,
+            "storage_usage_mb": 0,
+            "storage_limit_mb": 10240,
+            "api_calls_used": 0,
+            "api_calls_limit": 12,
+            "warnings": ["Unable to retrieve resource data"]
         }), 500
 
 @app.route('/api/tracker-data')
@@ -1783,22 +2142,9 @@ def get_tracker_data():
             print("ERROR: data_manager is None - cannot load selections for tracker data")
             return jsonify({
                 "success": False,
-                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
-                "ephemeral_mode": True,
-                "matches": [],
-                "statistics": {
-                    "total_selectors": len(SELECTORS),
-                    "selected_count": 0,
-                    "placeholder_count": len(SELECTORS),
-                    "btts_detected": 0,
-                    "btts_pending": 0,
-                    "btts_failed": 0,
-                    "completion_percentage": 0,
-                    "ephemeral_mode": True,
-                    "note": "Data is stored in memory only and will be lost when the application restarts"
-                },
+                "error": "Data manager not available",
                 "last_updated": datetime.now().isoformat()
-            }), 200  # Return 200 since this is expected behavior in ephemeral mode
+            }), 500
 
         selections = data_manager.load_weekly_selections(week)
 
@@ -1895,6 +2241,14 @@ def get_tracker_data():
         btts_pending = sum(1 for match in tracker_matches if match.get('is_selected') and match.get('status') in ['not_started', 'live'])
         btts_failed = sum(1 for match in tracker_matches if match.get('status') == 'finished' and not (match.get('home_score', 0) > 0 and match.get('away_score', 0) > 0))
 
+        # Calculate enhanced statistics
+        completion_percentage = max(0, min(100, int((selected_count / len(SELECTORS)) * 100))) if len(SELECTORS) > 0 else 0
+
+        # Enhanced match statistics
+        live_matches = len([m for m in tracker_matches if m.get('status') == 'live'])
+        finished_matches = len([m for m in tracker_matches if m.get('status') == 'finished'])
+        not_started_matches = len([m for m in tracker_matches if m.get('status') == 'not_started'])
+
         return jsonify({
             "success": True,
             "target_date": target_date,
@@ -1908,395 +2262,57 @@ def get_tracker_data():
                 "btts_detected": btts_detected,
                 "btts_pending": btts_pending,
                 "btts_failed": btts_failed,
-                "completion_percentage": max(0, min(100, int((selected_count / len(SELECTORS)) * 100))) if len(SELECTORS) > 0 else 0
+                "completion_percentage": completion_percentage,
+                "live_matches": live_matches,
+                "finished_matches": finished_matches,
+                "not_started_matches": not_started_matches,
             },
             "last_updated": datetime.now().isoformat()
         })
 
     except Exception as e:
+        # Enhanced error handling with fallback data structure
+        fallback_matches = []
+        for selector in SELECTORS:
+            fallback_matches.append({
+                "selector": selector,
+                "home_team": None,
+                "away_team": None,
+                "home_score": 0,
+                "away_score": 0,
+                "status": "error",
+                "match_time": "—",
+                "league": None,
+                "prediction": "TBD",
+                "confidence": 0,
+                "is_selected": False,
+                "placeholder_text": "Error loading data",
+                "error": True,
+                "last_updated": datetime.now().isoformat()
+            })
+
         return jsonify({
             "success": False,
             "error": f"Error getting tracker data: {str(e)}",
-            "last_updated": datetime.now().isoformat()
-        }), 500
-
-# ===== BTTS TEST MODE API ENDPOINTS =====
-
-def get_test_scenarios():
-    """Generate various test scenarios for BTTS testing."""
-    base_matches = {
-        "Glynny": {
-            "sofascore_id": 1234567,
-            "home_team": "Manchester City",
-            "away_team": "Everton",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Premier League",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Eamonn Bone": {
-            "sofascore_id": 1234568,
-            "home_team": "Hull City",
-            "away_team": "Charlton Athletic",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Championship",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Mickey D": {
-            "sofascore_id": 1234569,
-            "home_team": "Burnley",
-            "away_team": "Leeds United",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Championship",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Rob Carney": {
-            "sofascore_id": 1234570,
-            "home_team": "St. Mirren",
-            "away_team": "Aberdeen",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Scottish Premiership",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Steve H": {
-            "sofascore_id": 1234571,
-            "home_team": "Shrewsbury Town",
-            "away_team": "Cambridge United",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "League One",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Danny": {
-            "sofascore_id": 1234572,
-            "home_team": "Derby County",
-            "away_team": "Queens Park Rangers",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Championship",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Eddie Lee": {
-            "sofascore_id": 1234573,
-            "home_team": "Burton Albion",
-            "away_team": "Bolton Wanderers",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "League One",
-            "last_updated": datetime.now().isoformat()
-        },
-        "Fran Radar": {
-            "sofascore_id": 1234574,
-            "home_team": "Forfar Athletic",
-            "away_team": "Clyde",
-            "home_score": 0,
-            "away_score": 0,
-            "status": "not_started",
-            "btts_detected": False,
-            "league": "Scottish League Two",
-            "last_updated": datetime.now().isoformat()
-        }
-    }
-
-    scenarios = {
-        "all-pending": {
-            "name": "All Pending",
-            "description": "All matches not started, scores 0-0",
-            "matches": base_matches
-        },
-        "mixed-results": {
-            "name": "Mixed Results",
-            "description": "Mix of BTTS success, failures, and pending",
-            "matches": {
-                **base_matches,
-                "Glynny": { **base_matches["Glynny"], "home_score": 2, "away_score": 1, "status": "finished", "btts_detected": True },
-                "Eamonn Bone": { **base_matches["Eamonn Bone"], "home_score": 1, "away_score": 0, "status": "finished", "btts_detected": False },
-                "Mickey D": { **base_matches["Mickey D"], "home_score": 1, "away_score": 1, "status": "live", "btts_detected": True },
-                "Rob Carney": { **base_matches["Rob Carney"], "home_score": 0, "away_score": 0, "status": "live" }
-            }
-        },
-        "early-btts": {
-            "name": "Early BTTS",
-            "description": "BTTS detected early in matches",
-            "matches": {
-                **base_matches,
-                "Glynny": { **base_matches["Glynny"], "home_score": 1, "away_score": 1, "status": "live", "btts_detected": True },
-                "Eamonn Bone": { **base_matches["Eamonn Bone"], "home_score": 1, "away_score": 1, "status": "live", "btts_detected": True },
-                "Mickey D": { **base_matches["Mickey D"], "home_score": 0, "away_score": 1, "status": "live" },
-                "Rob Carney": { **base_matches["Rob Carney"], "home_score": 1, "away_score": 0, "status": "live" }
-            }
-        },
-        "late-failures": {
-            "name": "Late Failures",
-            "description": "Matches finishing without BTTS",
-            "matches": {
-                **base_matches,
-                "Glynny": { **base_matches["Glynny"], "home_score": 2, "away_score": 0, "status": "finished", "btts_detected": False },
-                "Eamonn Bone": { **base_matches["Eamonn Bone"], "home_score": 0, "away_score": 1, "status": "finished", "btts_detected": False },
-                "Mickey D": { **base_matches["Mickey D"], "home_score": 3, "away_score": 0, "status": "finished", "btts_detected": False },
-                "Rob Carney": { **base_matches["Rob Carney"], "home_score": 0, "away_score": 0, "status": "finished", "btts_detected": False }
-            }
-        },
-        "halftime-scores": {
-            "name": "Halftime Scores",
-            "description": "Matches at halftime with various scores",
-            "matches": {
-                **base_matches,
-                "Glynny": { **base_matches["Glynny"], "home_score": 1, "away_score": 0, "status": "first_half" },
-                "Eamonn Bone": { **base_matches["Eamonn Bone"], "home_score": 0, "away_score": 1, "status": "first_half" },
-                "Mickey D": { **base_matches["Mickey D"], "home_score": 1, "away_score": 1, "status": "first_half", "btts_detected": True },
-                "Rob Carney": { **base_matches["Rob Carney"], "home_score": 0, "away_score": 0, "status": "first_half" }
-            }
-        },
-        "live-action": {
-            "name": "Live Action",
-            "description": "Multiple live matches with goals",
-            "matches": {
-                **base_matches,
-                "Glynny": { **base_matches["Glynny"], "home_score": 2, "away_score": 1, "status": "live", "btts_detected": True },
-                "Eamonn Bone": { **base_matches["Eamonn Bone"], "home_score": 1, "away_score": 2, "status": "live", "btts_detected": True },
-                "Mickey D": { **base_matches["Mickey D"], "home_score": 0, "away_score": 1, "status": "live" },
-                "Rob Carney": { **base_matches["Rob Carney"], "home_score": 1, "away_score": 0, "status": "live" },
-                "Steve H": { **base_matches["Steve H"], "home_score": 1, "away_score": 1, "status": "live", "btts_detected": True }
-            }
-        },
-        "random": {
-            "name": "Random Scenario",
-            "description": "Randomly generated realistic scenario",
-            "matches": {}
-        }
-    }
-
-    # Generate random scenario if requested
-    if "random" in scenarios:
-        import random
-        random_matches = {}
-        for selector, match_data in base_matches.items():
-            # Randomly assign scores and status
-            status_options = ["not_started", "live", "finished", "first_half"]
-            status = random.choice(status_options)
-
-            if status == "not_started":
-                home_score, away_score = 0, 0
-            elif status == "finished":
-                home_score = random.randint(0, 4)
-                away_score = random.randint(0, 4)
-            else:  # live or halftime
-                home_score = random.randint(0, 3)
-                away_score = random.randint(0, 3)
-
-            random_matches[selector] = {
-                **match_data,
-                "home_score": home_score,
-                "away_score": away_score,
-                "status": status,
-                "btts_detected": home_score > 0 and away_score > 0
-            }
-
-        scenarios["random"]["matches"] = random_matches
-
-    return scenarios
-
-@app.route('/api/btts-test-scenarios')
-def get_btts_test_scenarios():
-    """API endpoint to get test scenarios for BTTS testing."""
-    try:
-        scenario_name = request.args.get('scenario', 'all-pending')
-        scenarios = get_test_scenarios()
-
-        if scenario_name not in scenarios:
-            return jsonify({
-                "error": f"Unknown scenario: {scenario_name}",
-                "available_scenarios": list(scenarios.keys())
-            }), 400
-
-        scenario_data = scenarios[scenario_name]
-
-        # Calculate statistics
-        matches = scenario_data["matches"]
-        btts_detected = sum(1 for match in matches.values() if match['btts_detected'])
-        btts_pending = sum(1 for match in matches.values() if match['status'] in ['live', 'not_started', 'first_half'])
-        btts_failed = sum(1 for match in matches.values() if match['status'] == 'finished' and not match['btts_detected'])
-
-        return jsonify({
-            "status": "TEST_MODE",
-            "message": f"Test scenario: {scenario_data['description']}",
-            "scenario": scenario_name,
-            "matches": matches,
+            "target_date": datetime.now().strftime('%Y-%m-%d'),
+            "week": get_current_prediction_week(),
+            "matches": fallback_matches,
+            "selectors": SELECTORS,
             "statistics": {
-                "total_matches_tracked": len(matches),
-                "btts_detected": btts_detected,
-                "btts_pending": btts_pending,
-                "btts_failed": btts_failed,
-                "last_update": datetime.now().isoformat(),
-                "sofascore_api_available": False,
-                "api_calls_used": 0,
-                "api_calls_target": "0 (Test Mode)"
+                "total_selectors": len(SELECTORS),
+                "selected_count": 0,
+                "placeholder_count": len(SELECTORS),
+                "btts_detected": 0,
+                "btts_pending": 0,
+                "btts_failed": 0,
+                "completion_percentage": 0,
+                "error": True,
+                "error_message": str(e)
             },
             "last_updated": datetime.now().isoformat(),
-            "sofascore_integration": {
-                "enabled": False,
-                "cache_hit_rate": 0,
-                "events_detected": len(matches)
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "error": f"Error getting test scenarios: {str(e)}",
-            "status": "ERROR",
-            "last_updated": datetime.now().isoformat()
+            "fallback": True
         }), 500
 
-@app.route('/api/btts-test-trigger-btts', methods=['POST'])
-def trigger_btts_test():
-    """API endpoint to manually trigger BTTS for testing."""
-    try:
-        data = request.get_json()
-        selector = data.get('selector')
-        action = data.get('action', 'trigger_btts')
-
-        # Get current test data
-        scenarios = get_test_scenarios()
-        current_matches = scenarios['all-pending']['matches'].copy()
-
-        if action == 'trigger_all_btts':
-            # Trigger BTTS for all selectors
-            for sel in current_matches:
-                current_matches[sel] = {
-                    **current_matches[sel],
-                    "home_score": 1,
-                    "away_score": 1,
-                    "status": "live",
-                    "btts_detected": True,
-                    "last_updated": datetime.now().isoformat()
-                }
-        elif selector and selector in current_matches:
-            # Trigger BTTS for specific selector
-            current_matches[selector] = {
-                **current_matches[selector],
-                "home_score": 1,
-                "away_score": 1,
-                "status": "live",
-                "btts_detected": True,
-                "last_updated": datetime.now().isoformat()
-            }
-        else:
-            return jsonify({
-                "success": False,
-                "error": f"Selector '{selector}' not found"
-            }), 404
-
-        # Calculate updated statistics
-        btts_detected = sum(1 for match in current_matches.values() if match['btts_detected'])
-        btts_pending = sum(1 for match in current_matches.values() if match['status'] in ['live', 'not_started'])
-        btts_failed = sum(1 for match in current_matches.values() if match['status'] == 'finished' and not match['btts_detected'])
-
-        return jsonify({
-            "success": True,
-            "message": f"BTTS {'triggered for all' if action == 'trigger_all_btts' else f'triggered for {selector}'}",
-            "match_data" if selector else "matches_data": current_matches[selector] if selector and selector in current_matches else current_matches,
-            "statistics": {
-                "total_matches_tracked": len(current_matches),
-                "btts_detected": btts_detected,
-                "btts_pending": btts_pending,
-                "btts_failed": btts_failed,
-                "last_update": datetime.now().isoformat()
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
-
-@app.route('/api/btts-test-update-score', methods=['POST'])
-def update_score_test():
-    """API endpoint to update scores for testing."""
-    try:
-        data = request.get_json()
-        selector = data.get('selector')
-        team = data.get('team')  # 'home' or 'away'
-        delta = data.get('delta', 0)  # Score change (+1 or -1)
-        action = data.get('action', 'update_score')
-
-        # Get current test data
-        scenarios = get_test_scenarios()
-        current_matches = scenarios['all-pending']['matches'].copy()
-
-        if action == 'reset_all':
-            # Reset all scores to 0-0
-            for sel in current_matches:
-                current_matches[sel] = {
-                    **current_matches[sel],
-                    "home_score": 0,
-                    "away_score": 0,
-                    "status": "not_started",
-                    "btts_detected": False,
-                    "last_updated": datetime.now().isoformat()
-                }
-        elif selector and selector in current_matches and team in ['home', 'away']:
-            # Update specific selector's score
-            current_score = current_matches[selector][f'{team}_score']
-            new_score = max(0, current_score + delta)  # Don't go below 0
-
-            # Update status to live if score changes
-            new_status = "live" if new_score > 0 else current_matches[selector]["status"]
-
-            current_matches[selector] = {
-                **current_matches[selector],
-                f"{team}_score": new_score,
-                "status": new_status,
-                "btts_detected": current_matches[selector]["home_score"] > 0 and current_matches[selector]["away_score"] > 0,
-                "last_updated": datetime.now().isoformat()
-            }
-        else:
-            return jsonify({
-                "success": False,
-                "error": f"Invalid parameters: selector='{selector}', team='{team}', delta={delta}"
-            }), 400
-
-        # Calculate updated statistics
-        btts_detected = sum(1 for match in current_matches.values() if match['btts_detected'])
-        btts_pending = sum(1 for match in current_matches.values() if match['status'] in ['live', 'not_started'])
-        btts_failed = sum(1 for match in current_matches.values() if match['status'] == 'finished' and not match['btts_detected'])
-
-        return jsonify({
-            "success": True,
-            "message": f"Score {'reset for all' if action == 'reset_all' else f'updated for {selector} ({team} {delta:+d})'}",
-            "match_data" if selector else "matches_data": current_matches[selector] if selector and selector in current_matches else current_matches,
-            "statistics": {
-                "total_matches_tracked": len(current_matches),
-                "btts_detected": btts_detected,
-                "btts_pending": btts_pending,
-                "btts_failed": btts_failed,
-                "last_update": datetime.now().isoformat()
-            }
-        })
-
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
 # ===== HEALTH CHECK AND MONITORING =====
 
@@ -2307,7 +2323,6 @@ def health_check():
         # Enhanced service status checking
         services = {
             'bbc_scraper': BBCSportScraper is not None,
-            'sofascore_api': SOFASCORE_AVAILABLE,
             'btts_detector': BTTS_DETECTOR_AVAILABLE,
             'data_manager': data_manager is not None
         }
@@ -2396,16 +2411,6 @@ def metrics():
             }
         }
 
-        # Add Sofascore API metrics if available
-        if SOFASCORE_AVAILABLE and sofascore_api:
-            try:
-                usage_stats = sofascore_api.get_usage_stats()
-                cache_analytics = sofascore_api.get_cache_analytics()
-                metrics_data['api_usage'] = usage_stats
-                metrics_data['cache_stats'] = cache_analytics
-            except Exception as e:
-                app.logger.warning(f"Could not get Sofascore metrics: {e}")
-
         return jsonify(metrics_data)
 
     except Exception as e:
@@ -2464,12 +2469,22 @@ if __name__ == '__main__':
     app.logger.info(f"Starting application in {'development' if config.DEBUG else 'production'} mode")
     app.logger.info(f"Listening on {config.HOST}:{config.PORT}")
 
+    # Check for port override from command line
+    import sys
+    port = 5000  # Default port
+    host = '127.0.0.1'  # Bind to localhost for testing
+    if len(sys.argv) > 2 and sys.argv[1] == '--port':
+        try:
+            port = int(sys.argv[2])
+        except ValueError:
+            pass
+
     if config.DEBUG:
         # Development server
         app.run(
             debug=config.DEBUG,
-            host=config.HOST,
-            port=config.PORT,
+            host=host,
+            port=port,
             use_reloader=False  # Disable reloader in production-like environment
         )
     else:
@@ -2477,7 +2492,7 @@ if __name__ == '__main__':
         # In production, use gunicorn: gunicorn --config gunicorn.conf.py app:app
         app.run(
             debug=False,
-            host=config.HOST,
-            port=config.PORT,
+            host=host,
+            port=port,
             use_reloader=False
         )
