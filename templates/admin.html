@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Predictions - Admin Interface</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Football Predictions Admin</h1>
+            <div class="header-info">
+                <p>Next Saturday: <strong>{{ next_saturday }}</strong></p>
+                <p>Data from: <strong>{{ scraping_date }}</strong></p>
+                {% if diagnostic_info.using_alternative_date %}
+                <div class="alert alert-info" style="margin: 10px 0; padding: 10px; background: #e7f3ff; border: 1px solid #bee5eb; border-radius: 4px;">
+                    <strong>ℹ️ Using Alternative Date:</strong> No matches found for {{ diagnostic_info.original_target_date }}, showing fixtures for {{ next_saturday }} instead.
+                </div>
+                {% endif %}
+            </div>
+        </header>
+        <!-- Navigation Menu -->
+        <nav class="admin-nav">
+            <div class="nav-container">
+                <a href="/btts-tracker" class="nav-link">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">BTTS Tracker</span>
+                </a>
+                <a href="/btts-tracker-test" class="nav-link">
+                    <span class="nav-icon">🧪</span>
+                    <span class="nav-text">Test Tracker</span>
+                </a>
+                <a href="/mockup" class="nav-link">
+                    <span class="nav-icon">🎨</span>
+                    <span class="nav-text">Mockup Page</span>
+                </a>
+            </div>
+        </nav>
+
+
+        <div class="selector-summary-panel">
+            <div class="summary-header">
+                <h2>Selector Assignment Summary</h2>
+                <div class="summary-progress">
+                    <div class="progress-indicator">
+                        <span class="assigned-count">{{ selections|length }}</span>
+                        <span class="progress-separator">/</span>
+                        <span class="total-count">{{ all_selectors|length }}</span>
+                        <span class="progress-label">selectors assigned</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ progress_percentage }}%"></div>
+                    </div>
+                    <div class="progress-text">{{ progress_percentage }}% Complete</div>
+                </div>
+            </div>
+
+            <div class="summary-content">
+                <div class="selectors-grid">
+                    <h3>All Selectors</h3>
+                    <div class="selectors-container">
+                        {% for selector in all_selectors %}
+                        <div class="selector-item {% if selector in selections %}assigned{% else %}available{% endif %}">
+                            <div class="selector-header">
+                                <span class="selector-name">{{ selector }}</span>
+                                <span class="status-indicator {% if selector in selections %}assigned-dot{% else %}available-dot{% endif %}">●</span>
+                            </div>
+                            {% if selector in selections %}
+                            <div class="selector-info">
+                                <div class="assignment-details">
+                                    <span class="match-info">{{ selections[selector].home_team }} vs {{ selections[selector].away_team }}</span>
+                                    <span class="assignment-time">{{ selections[selector].assigned_at[:19] }}</span>
+                                </div>
+                                <button class="btn btn-small btn-danger unassign-btn"
+                                        data-selector="{{ selector }}"
+                                        data-match-id="{{ selections[selector].id }}">Unassign</button>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="summary-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Available Matches:</span>
+                        <span class="stat-value">{{ matches|length }}</span>
+                    </div>
+                    {% if selections|length < 8 %}
+                    <div class="stat-item warning">
+                        <span class="stat-label">Still Need:</span>
+                        <span class="stat-value">{{ 8 - selections|length }} more selections</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if selections|length < 8 %}
+        <div class="override-section">
+            <div class="warning-banner">
+                <h3>⚠️ Override Required</h3>
+                <p>You have only {{ selections|length }} selections. You need 8 selectors or must confirm override.</p>
+                <button id="override-btn" class="btn btn-warning">Override Confirmation</button>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="matches-section">
+            <h2>Saturday 15:00 Matches</h2>
+
+            {% if matches %}
+            <div class="matches-grid">
+                {% for match in matches %}
+                <div class="match-card" data-match-id="{{ match.league }}_{{ match.home_team }}_{{ match.away_team }}">
+                    <div class="match-header">
+                        <h3>{{ match.league }}</h3>
+                        <div class="match-time">{{ match.kickoff }}</div>
+                    </div>
+
+                    <div class="match-teams">
+                        <div class="team home">{{ match.home_team }}</div>
+                        <div class="vs">vs</div>
+                        <div class="team away">{{ match.away_team }}</div>
+                    </div>
+
+                    {% if match.venue != "TBC" %}
+                    <div class="match-venue">{{ match.venue }}</div>
+                    {% endif %}
+
+                    <div class="match-assignment">
+                        {% set match_id = match.league + "_" + match.home_team + "_" + match.away_team %}
+                        {% set assigned_selector = none %}
+                        {% for selector, assignment in selections.items() %}
+                            {% if assignment.id == match_id %}
+                                {% set assigned_selector = selector %}
+                            {% endif %}
+                        {% endfor %}
+
+                        {% if assigned_selector %}
+                        <div class="assigned-badge">
+                            Assigned to: <strong>{{ assigned_selector }}</strong>
+                            <button class="btn btn-small btn-danger unassign-btn"
+                                    data-selector="{{ assigned_selector }}"
+                                    data-match-id="{{ match_id }}">Unassign</button>
+                        </div>
+                        {% else %}
+                        <div class="assignment-controls">
+                            <select class="selector-dropdown" data-match-id="{{ match_id }}">
+                                <option value="">Select Selector ▼</option>
+                                {% for selector in all_selectors_for_dropdown %}
+                                <option value="{{ selector }}">
+                                    {{ selector }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="assignment-status" style="display: none;">
+                                <span class="status-text"></span>
+                                <span class="status-spinner" style="display: none;">⟳</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-matches">
+                <div class="no-matches-content">
+                    <h3>📅 No Matches Available</h3>
+                    <p>No 15:00 matches found for <strong>{{ next_saturday }}</strong>.</p>
+
+                    <div class="troubleshooting-info">
+                        <h4>Possible reasons:</h4>
+                        <ul>
+                            <li>International break or scheduled weekend off</li>
+                            <li>Date is too far in the future for fixture publication</li>
+                            <li>BBC Sport hasn't published fixtures for this date yet</li>
+                            <li>Technical issues with the BBC scraper</li>
+                        </ul>
+
+                        <div class="debug-info" style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px; font-family: monospace; font-size: 12px;">
+                            <h5>Debug Information:</h5>
+                            <p><strong>Target Date:</strong> {{ diagnostic_info.target_date }}</p>
+                            <p><strong>Scraping Date:</strong> {{ diagnostic_info.scraping_date }}</p>
+                            <p><strong>Matches Found:</strong> {{ diagnostic_info.total_matches_found }}</p>
+                            <p><strong>BBC Scraper:</strong> {{ "Available" if diagnostic_info.bbc_scraper_available else "Unavailable" }}</p>
+                            <p><strong>Data Manager:</strong> {{ "Available" if diagnostic_info.data_manager_available else "Unavailable" }}</p>
+                        </div>
+
+                        <div class="action-buttons" style="margin-top: 20px;">
+                            <p><strong>What you can do:</strong></p>
+                            <button onclick="window.location.reload()" class="btn btn-primary">Refresh Page</button>
+                            <button onclick="testScraper()" class="btn btn-secondary" style="margin-left: 10px;">Test BBC Scraper</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Override Confirmation Modal -->
+    <div id="override-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Override Confirmation</h3>
+                <span class="modal-close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>You are about to proceed with only <strong>{{ selections|length }}</strong> selections instead of the required 8.</p>
+                <p>This should only be done in exceptional circumstances.</p>
+
+                <div class="confirmation-section">
+                    <label for="override-confirm">Type the following to confirm:</label>
+                    <div class="confirmation-text">"I confirm that I want to proceed with fewer than 8 selections"</div>
+                    <input type="text" id="override-confirm" class="form-control" placeholder="Type the confirmation message exactly">
+                </div>
+
+                <div class="override-reasons">
+                    <h4>Please select the reason for override:</h4>
+                    <div class="reason-options">
+                        <label class="reason-option">
+                            <input type="radio" name="override-reason" value="insufficient-matches">
+                            <span>Insufficient suitable matches available</span>
+                        </label>
+                        <label class="reason-option">
+                            <input type="radio" name="override-reason" value="time-constraints">
+                            <span>Time constraints preventing full assignment</span>
+                        </label>
+                        <label class="reason-option">
+                            <input type="radio" name="override-reason" value="technical-issues">
+                            <span>Technical issues with selector availability</span>
+                        </label>
+                        <label class="reason-option">
+                            <input type="radio" name="override-reason" value="other">
+                            <span>Other (will be logged for review)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary modal-cancel">Cancel</button>
+                <button id="confirm-override-btn" class="btn btn-warning">Confirm Override</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+
+    <script>
+        // Function to test BBC scraper
+        async function testScraper() {
+            try {
+                const response = await fetch('/api/bbc-fixtures');
+                const data = await response.json();
+
+                if (data.success) {
+                    alert(`BBC Scraper Test Results:\n\n` +
+                          `Target Date: ${data.next_saturday}\n` +
+                          `Matches Found: ${data.total_matches}\n` +
+                          `Scraping Date: ${data.scraping_date}\n\n` +
+                          `The scraper is working correctly. No matches means either:\n` +
+                          `• International break\n` +
+                          `• No 15:00 matches scheduled\n` +
+                          `• Date too far in future`);
+                } else {
+                    alert(`BBC Scraper Error: ${data.error}`);
+                }
+            } catch (error) {
+                alert(`Error testing scraper: ${error.message}`);
+            }
+        }
+
+        // Auto-refresh diagnostic info every 5 minutes
+        setInterval(() => {
+            const debugInfo = document.querySelector('.debug-info');
+            if (debugInfo && !document.querySelector('.no-matches')) {
+                // Only refresh if we're still on the no-matches page
+                window.location.reload();
+            }
+        }, 300000); // 5 minutes
+    </script>
+</body>
+</html>

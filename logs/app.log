@@ -1,0 +1,245 @@
+2025-10-18 03:46:59,923 - app - INFO - BTTS detector loaded successfully
+2025-10-18 03:46:59,923 - app - INFO - Sofascore API loaded successfully
+2025-10-18 03:46:59,926 - app - INFO - Starting application in development mode
+2025-10-18 03:46:59,926 - app - INFO - Listening on 0.0.0.0:5000
+2025-10-18 03:47:08,505 - app - INFO - GET http://localhost:5000/btts-tracker from 127.0.0.1
+2025-10-18 03:47:08,506 - DataManager - INFO - Weekly selections loaded successfully for 2025-10-18
+2025-10-18 03:47:08,512 - app - INFO - Response: 200
+2025-10-18 03:47:08,518 - app - INFO - GET http://localhost:5000/static/css/tracker.css from 127.0.0.1
+2025-10-18 03:47:08,518 - app - INFO - GET http://localhost:5000/static/js/tracker.js from 127.0.0.1
+2025-10-18 03:47:08,522 - app - INFO - Response: 200
+2025-10-18 03:47:08,523 - app - INFO - Response: 200
+2025-10-18 03:47:08,660 - app - INFO - GET http://localhost:5000/favicon.ico from 127.0.0.1
+2025-10-18 03:47:08,660 - app - WARNING - 404 error: http://localhost:5000/favicon.ico
+2025-10-18 03:47:08,660 - app - INFO - Response: 404
+2025-10-18 03:47:17,168 - app - INFO - GET http://localhost:5000/admin from 127.0.0.1
+2025-10-18 03:47:17,169 - bbc_scraper - INFO - Scraping fixtures for Saturday 2025-10-18
+2025-10-18 03:47:17,169 - bbc_scraper - INFO - Scraping Premier League
+2025-10-18 03:47:17,169 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:17,169 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/premier-league/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:17,442 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:17,442 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - Premier League using DataManager
+2025-10-18 03:47:17,442 - bbc_scraper - INFO - Cached 2 matches for Premier League
+2025-10-18 03:47:17,442 - bbc_scraper - INFO - Found 2 15:00 matches in Premier League
+2025-10-18 03:47:17,442 - bbc_scraper - INFO - Scraping English Championship
+2025-10-18 03:47:17,442 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:17,442 - bbc_scraper - INFO - Rate limiting: sleeping for 0.73 seconds
+2025-10-18 03:47:18,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/championship/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:18,380 - bbc_scraper - INFO - No matches found for English Championship - this may be due to international break or scheduled weekend off
+2025-10-18 03:47:18,380 - bbc_scraper - INFO - Found 0 15:00 matches in English Championship
+2025-10-18 03:47:18,380 - bbc_scraper - INFO - Scraping English League One
+2025-10-18 03:47:18,380 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:18,380 - bbc_scraper - INFO - Rate limiting: sleeping for 0.79 seconds
+2025-10-18 03:47:19,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/league-one/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:19,353 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:19,353 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - English League One using DataManager
+2025-10-18 03:47:19,353 - bbc_scraper - INFO - Cached 8 matches for English League One
+2025-10-18 03:47:19,353 - bbc_scraper - INFO - Found 8 15:00 matches in English League One
+2025-10-18 03:47:19,353 - bbc_scraper - INFO - Scraping English League Two
+2025-10-18 03:47:19,354 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:19,354 - bbc_scraper - INFO - Rate limiting: sleeping for 0.82 seconds
+2025-10-18 03:47:20,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/league-two/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:20,351 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:20,351 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - English League Two using DataManager
+2025-10-18 03:47:20,351 - bbc_scraper - INFO - Cached 10 matches for English League Two
+2025-10-18 03:47:20,351 - bbc_scraper - INFO - Found 10 15:00 matches in English League Two
+2025-10-18 03:47:20,351 - bbc_scraper - INFO - Scraping English National League
+2025-10-18 03:47:20,352 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:20,352 - bbc_scraper - INFO - Rate limiting: sleeping for 0.82 seconds
+2025-10-18 03:47:21,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/national-league/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:21,342 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:21,342 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - English National League using DataManager
+2025-10-18 03:47:21,342 - bbc_scraper - INFO - Cached 10 matches for English National League
+2025-10-18 03:47:21,342 - bbc_scraper - INFO - Found 10 15:00 matches in English National League
+2025-10-18 03:47:21,342 - bbc_scraper - INFO - Scraping Scottish Premiership
+2025-10-18 03:47:21,342 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:21,342 - bbc_scraper - INFO - Rate limiting: sleeping for 0.83 seconds
+2025-10-18 03:47:22,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/scottish-premiership/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:22,369 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:22,369 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - Scottish Premiership using DataManager
+2025-10-18 03:47:22,369 - bbc_scraper - INFO - Cached 4 matches for Scottish Premiership
+2025-10-18 03:47:22,369 - bbc_scraper - INFO - Found 4 15:00 matches in Scottish Premiership
+2025-10-18 03:47:22,369 - bbc_scraper - INFO - Scraping Scottish Championship
+2025-10-18 03:47:22,369 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:22,369 - bbc_scraper - INFO - Rate limiting: sleeping for 0.80 seconds
+2025-10-18 03:47:23,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/scottish-championship/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:23,358 - bbc_scraper - INFO - No matches found for Scottish Championship - this may be due to international break or scheduled weekend off
+2025-10-18 03:47:23,358 - bbc_scraper - INFO - Found 0 15:00 matches in Scottish Championship
+2025-10-18 03:47:23,358 - bbc_scraper - INFO - Scraping Scottish League One
+2025-10-18 03:47:23,358 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:23,358 - bbc_scraper - INFO - Rate limiting: sleeping for 0.81 seconds
+2025-10-18 03:47:24,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/scottish-league-one/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:24,348 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:24,348 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - Scottish League One using DataManager
+2025-10-18 03:47:24,348 - bbc_scraper - INFO - Cached 4 matches for Scottish League One
+2025-10-18 03:47:24,348 - bbc_scraper - INFO - Found 4 15:00 matches in Scottish League One
+2025-10-18 03:47:24,348 - bbc_scraper - INFO - Scraping Scottish League Two
+2025-10-18 03:47:24,348 - DataManager - WARNING - No BBC cache file found for date 2025-10-18
+2025-10-18 03:47:24,348 - bbc_scraper - INFO - Rate limiting: sleeping for 0.82 seconds
+2025-10-18 03:47:25,170 - bbc_scraper - INFO - Requesting: https://www.bbc.co.uk/sport/football/scottish-league-two/scores-fixtures/2025-10?filter=fixtures
+2025-10-18 03:47:25,327 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - Scottish League Two using DataManager
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Cached 5 matches for Scottish League Two
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Found 5 15:00 matches in Scottish League Two
+2025-10-18 03:47:25,327 - DataManager - INFO - BBC fixtures cached successfully for 2025-10-18
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Cached BBC data for 2025-10-18 - ALL_LEAGUES using DataManager
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Cached 43 aggregated matches for 2025-10-18
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Total 15:00 matches found: 43
+2025-10-18 03:47:25,327 - bbc_scraper - INFO - Matches by league: {'Premier League': 2, 'English Championship': 0, 'English League One': 8, 'English League Two': 10, 'English National League': 10, 'Scottish Premiership': 4, 'Scottish Championship': 0, 'Scottish League One': 4, 'Scottish League Two': 5}
+2025-10-18 03:47:25,337 - app - INFO - Response: 200
+2025-10-18 03:47:25,344 - app - INFO - GET http://localhost:5000/static/css/admin.css from 127.0.0.1
+2025-10-18 03:47:25,344 - app - INFO - GET http://localhost:5000/static/js/admin.js from 127.0.0.1
+2025-10-18 03:47:25,344 - app - INFO - Response: 200
+2025-10-18 03:47:25,345 - app - INFO - Response: 200
+2025-10-18 03:47:25,416 - app - INFO - GET http://localhost:5000/favicon.ico from 127.0.0.1
+2025-10-18 03:47:25,416 - app - WARNING - 404 error: http://localhost:5000/favicon.ico
+2025-10-18 03:47:25,416 - app - INFO - Response: 404
+2025-10-18 03:47:36,821 - app - INFO - GET http://localhost:5000/btts-tracker-test from 127.0.0.1
+2025-10-18 03:47:36,823 - app - INFO - Response: 200
+2025-10-18 03:47:36,829 - app - INFO - GET http://localhost:5000/static/css/tracker.css from 127.0.0.1
+2025-10-18 03:47:36,829 - app - INFO - Response: 200
+2025-10-18 03:47:36,834 - app - INFO - GET http://localhost:5000/api/btts-test-scenarios?scenario=all-pending from 127.0.0.1
+2025-10-18 03:47:36,834 - app - INFO - Response: 200
+2025-10-18 03:47:36,896 - app - INFO - GET http://localhost:5000/favicon.ico from 127.0.0.1
+2025-10-18 03:47:36,896 - app - WARNING - 404 error: http://localhost:5000/favicon.ico
+2025-10-18 03:47:36,896 - app - INFO - Response: 404
+2025-10-18 03:54:26,700 - app - INFO - Received signal 15. Shutting down gracefully...
+2025-10-19 16:05:11,451 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-19 16:06:26,181 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-19 16:08:21,853 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-19 16:08:29,493 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-19 17:38:14,936 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 10:38:32,545 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 10:39:48,313 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 11:13:59,055 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 11:15:13,104 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 11:44:23,458 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 11:45:37,016 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 11:47:44,270 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 11:50:30,582 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 11:51:44,579 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 18:12:21,396 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 18:13:35,450 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 18:14:50,739 - DataManager - WARNING - No BBC cache file found for date 2025-10-26
+2025-10-20 18:15:20,730 - DataManager - WARNING - No BBC cache file found for date 2025-10-27
+2025-10-20 18:15:20,987 - DataManager - WARNING - No BBC cache file found for date 2025-10-28
+2025-10-20 18:15:21,313 - DataManager - WARNING - No BBC cache file found for date 2025-10-29
+2025-10-20 18:15:26,505 - DataManager - WARNING - No BBC cache file found for date 2025-10-30
+2025-10-20 18:15:28,118 - DataManager - WARNING - No BBC cache file found for date 2025-10-31
+2025-10-20 18:15:31,433 - DataManager - WARNING - No BBC cache file found for date 2025-11-01
+2025-10-20 18:16:17,443 - DataManager - WARNING - No BBC cache file found for date 2025-11-02
+2025-10-20 18:16:38,705 - DataManager - WARNING - No BBC cache file found for date 2025-11-03
+2025-10-20 18:16:40,214 - DataManager - WARNING - No BBC cache file found for date 2025-11-04
+2025-10-20 18:16:40,505 - DataManager - WARNING - No BBC cache file found for date 2025-11-05
+2025-10-20 18:16:40,746 - DataManager - WARNING - No BBC cache file found for date 2025-11-06
+2025-10-20 18:16:41,030 - DataManager - WARNING - No BBC cache file found for date 2025-11-07
+2025-10-20 18:16:43,473 - DataManager - WARNING - No BBC cache file found for date 2025-11-08
+2025-10-20 18:17:31,089 - app - WARNING - No fixtures found within 14 days of 2025-10-25
+2025-10-20 18:17:31,090 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 18:35:54,171 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 18:37:09,724 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 18:38:54,567 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 18:40:09,311 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 18:58:04,032 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 18:59:17,819 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:00:28,674 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 19:01:45,687 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:02:54,503 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 19:04:08,508 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:04:57,373 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 19:06:11,013 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:11:07,655 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 19:11:07,655 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:22:28,120 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:23:39,049 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 19:24:17,065 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 19:25:32,486 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 19:26:46,846 - DataManager - WARNING - No BBC cache file found for date 2025-10-26
+2025-10-20 19:27:15,128 - DataManager - WARNING - No BBC cache file found for date 2025-10-27
+2025-10-20 19:27:15,241 - DataManager - WARNING - No BBC cache file found for date 2025-10-28
+2025-10-20 19:27:15,549 - DataManager - WARNING - No BBC cache file found for date 2025-10-29
+2025-10-20 19:27:20,168 - DataManager - WARNING - No BBC cache file found for date 2025-10-30
+2025-10-20 19:27:21,885 - DataManager - WARNING - No BBC cache file found for date 2025-10-31
+2025-10-20 19:27:24,894 - DataManager - WARNING - No BBC cache file found for date 2025-11-01
+2025-10-20 19:28:11,901 - DataManager - WARNING - No BBC cache file found for date 2025-11-02
+2025-10-20 19:28:33,124 - DataManager - WARNING - No BBC cache file found for date 2025-11-03
+2025-10-20 19:28:34,645 - DataManager - WARNING - No BBC cache file found for date 2025-11-04
+2025-10-20 19:28:34,933 - DataManager - WARNING - No BBC cache file found for date 2025-11-05
+2025-10-20 19:28:35,181 - DataManager - WARNING - No BBC cache file found for date 2025-11-06
+2025-10-20 19:28:35,430 - DataManager - WARNING - No BBC cache file found for date 2025-11-07
+2025-10-20 19:28:37,760 - DataManager - WARNING - No BBC cache file found for date 2025-11-08
+2025-10-20 19:29:22,829 - app - WARNING - No fixtures found within 14 days of 2025-10-25
+2025-10-20 19:29:22,830 - app - ERROR - Data manager module not available - check filesystem permissions and directory creation
+2025-10-20 20:02:15,925 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:02:15,925 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:02:32,142 - DataManager - WARNING - No BBC cache file found for date 2025-12-01
+2025-10-20 20:02:32,348 - DataManager - WARNING - No BBC cache file found for date 2025-12-01
+2025-10-20 20:26:10,980 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:26:10,980 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:26:19,929 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:26:19,929 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:31:22,839 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:31:22,839 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:31:49,533 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:31:56,956 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:31:56,967 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:31:56,968 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:40:23,326 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:40:23,327 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:40:29,997 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:40:29,997 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:40:37,444 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:40:37,444 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:40:43,729 - app - WARNING - BBC scraper not available - showing admin interface without live data
+2025-10-20 20:40:43,729 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:40:57,070 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:49:18,352 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 20:49:43,532 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 21:17:57,614 - DataManager - WARNING - Removing cache file with invalid fixture data: bbc_cache_2025-10-25.json
+2025-10-20 21:18:36,893 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:18:36,893 - app - WARNING - No cached fixtures found for 2025-10-25
+2025-10-20 21:18:36,893 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:19:51,734 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:21:06,813 - DataManager - WARNING - No BBC cache file found for date 2025-10-26
+2025-10-20 21:21:35,900 - DataManager - WARNING - No BBC cache file found for date 2025-10-27
+2025-10-20 21:21:36,039 - DataManager - WARNING - No BBC cache file found for date 2025-10-28
+2025-10-20 21:21:36,372 - DataManager - WARNING - No BBC cache file found for date 2025-10-29
+2025-10-20 21:21:41,003 - DataManager - WARNING - No BBC cache file found for date 2025-10-30
+2025-10-20 21:21:42,590 - DataManager - WARNING - No BBC cache file found for date 2025-10-31
+2025-10-20 21:21:45,573 - DataManager - WARNING - No BBC cache file found for date 2025-11-01
+2025-10-20 21:22:31,663 - DataManager - WARNING - No BBC cache file found for date 2025-11-02
+2025-10-20 21:22:53,601 - DataManager - WARNING - No BBC cache file found for date 2025-11-03
+2025-10-20 21:22:55,116 - DataManager - WARNING - No BBC cache file found for date 2025-11-04
+2025-10-20 21:22:55,386 - DataManager - WARNING - No BBC cache file found for date 2025-11-05
+2025-10-20 21:22:55,619 - DataManager - WARNING - No BBC cache file found for date 2025-11-06
+2025-10-20 21:22:55,849 - DataManager - WARNING - No BBC cache file found for date 2025-11-07
+2025-10-20 21:22:58,172 - DataManager - WARNING - No BBC cache file found for date 2025-11-08
+2025-10-20 21:23:42,485 - app - WARNING - No fixtures found within 14 days of 2025-10-25
+2025-10-20 21:23:42,485 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 21:24:12,724 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 21:24:20,914 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:25:39,744 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:43:17,687 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 21:43:23,799 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:44:37,646 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:47:03,556 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-20 21:47:11,516 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:47:11,516 - app - WARNING - No cached fixtures found for 2025-10-25
+2025-10-20 21:47:11,517 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 21:48:26,295 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-20 22:38:50,839 - DataManager - WARNING - No selections file found for date 2025-10-25
+2025-10-21 09:46:35,683 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:35,683 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:36,186 - bbc_scraper - ERROR - Found invalid team name(s) 'Scunthorpe United' vs 'Aldershot Town' - appears to be international/other sport match
+2025-10-21 09:46:36,186 - bbc_scraper - ERROR - Scraped data validation failed for 2025-10-25 - ALL_LEAGUES. Not caching corrupted data.
+2025-10-21 09:46:36,186 - app - ERROR - [API DEBUG] Match Premier_League_Manchester_City_Everton not found in any data source
+2025-10-21 09:46:46,326 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:46,327 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:46,832 - bbc_scraper - ERROR - Found invalid team name(s) 'Scunthorpe United' vs 'Aldershot Town' - appears to be international/other sport match
+2025-10-21 09:46:46,832 - bbc_scraper - ERROR - Scraped data validation failed for 2025-10-25 - ALL_LEAGUES. Not caching corrupted data.
+2025-10-21 09:46:46,832 - app - ERROR - [API DEBUG] Match English_League_One_Bromley_Milton_Keynes_Dons not found in any data source
+2025-10-21 09:46:53,903 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:53,903 - app - WARNING - No cached fixtures found for 2025-10-25
+2025-10-21 09:46:53,903 - DataManager - WARNING - No BBC cache file found for date 2025-10-25
+2025-10-21 09:46:54,091 - bbc_scraper - ERROR - Found invalid team name(s) 'Scunthorpe United' vs 'Aldershot Town' - appears to be international/other sport match
+2025-10-21 09:46:54,091 - bbc_scraper - ERROR - Scraped data validation failed for 2025-10-25 - ALL_LEAGUES. Not caching corrupted data.
