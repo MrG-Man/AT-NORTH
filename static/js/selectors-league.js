@@ -119,11 +119,6 @@ function createLeagueCard(selector, position) {
     card.className = 'league-card';
     card.setAttribute('data-selector-id', selector.selector_id || selector.id || position);
     
-    // Enhanced selector info with additional stats if available
-    const selections = selector.selections || selector.total_matches || 0;
-    const correct = selector.correct_predictions || selector.btts_successes || 0;
-    const accuracy = selections > 0 ? Math.round((correct / selections) * 100) : 0;
-    
     card.innerHTML = `
         <div class="position-badge ${positionClass}">
             ${position}
@@ -131,20 +126,6 @@ function createLeagueCard(selector, position) {
         
         <div class="selector-info">
             <div class="selector-name">${selector.selector_name || selector.name || 'Unknown'}</div>
-            <div class="selector-stats">
-                <span class="stat-item">
-                    <span class="stat-icon">🎯</span>
-                    <span class="stat-value">${accuracy}%</span>
-                </span>
-                <span class="stat-item">
-                    <span class="stat-icon">✅</span>
-                    <span class="stat-value">${correct}</span>
-                </span>
-                <span class="stat-item">
-                    <span class="stat-icon">📊</span>
-                    <span class="stat-value">${selections}</span>
-                </span>
-            </div>
         </div>
         
         <div class="points-display">
