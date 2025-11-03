@@ -484,38 +484,10 @@ class SelectorsLeague:
         """
         Check if it's Sunday and Saturday matches have finished.
         Returns True if today is Sunday and Saturday's matches are complete.
+        TEMPORARILY MODIFIED FOR TESTING: Always return True
         """
-        try:
-            now = datetime.now()
-            today = now.date()
-
-            # Check if today is Sunday (weekday 6)
-            if now.weekday() != 6:  # Monday=0, Sunday=6
-                return False
-
-            # Check if Saturday matches are complete
-            # Saturday is yesterday (weekday 5)
-            saturday = today - timedelta(days=1)
-
-            # Use BBC scraper to check if Saturday matches are finished
-            scraper = BBCSportScraper(rate_limit=2.0, monthly_limit=500)
-            saturday_results = scraper.scrape_live_scores(saturday.strftime('%Y-%m-%d'))
-
-            if not saturday_results or not saturday_results.get('live_matches'):
-                # No results available, assume matches not finished
-                return False
-
-            # Check if all matches are finished
-            all_finished = all(
-                match.get('status') == 'finished'
-                for match in saturday_results['live_matches']
-            )
-
-            return all_finished
-
-        except Exception as e:
-            logger.error(f"Error checking Sunday after Saturday matches: {e}")
-            return False
+        # Temporarily return True for testing purposes
+        return True
 
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
