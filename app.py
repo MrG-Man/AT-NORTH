@@ -394,7 +394,13 @@ def load_selections():
     # Check if data_manager is available before calling methods
     if data_manager is None:
         print("ERROR: data_manager is None - cannot load selections")
-        return {"selectors": {}, "matches": [], "last_updated": None}
+        return {
+            "selectors": {},
+            "matches": [],
+            "last_updated": None,
+            "ephemeral_mode": True,
+            "warning": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart."
+        }
 
     # Load selections using DataManager
     selections = data_manager.load_weekly_selections(week)
@@ -425,6 +431,7 @@ def save_selections(selections_data):
     # Check if data_manager is available before calling methods
     if data_manager is None:
         print("ERROR: data_manager is None - cannot save selections")
+        app.logger.warning("Attempted to save selections in ephemeral mode - data will be lost on restart")
         return False
 
     # Extract just the selections part for DataManager
@@ -846,7 +853,7 @@ def btts_tracker():
         # Check if data_manager is available before calling methods
         if data_manager is None:
             print("ERROR: data_manager is None - cannot load selections for BTTS tracker")
-            return render_template('tracker.html')
+            return render_template('tracker.html', ephemeral_mode=True, error_message="Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.")
 
         selections = data_manager.load_weekly_selections(week)
 
@@ -884,14 +891,16 @@ def get_btts_status():
         if data_manager is None:
             print("ERROR: data_manager is None - cannot load selections for BTTS status")
             return jsonify({
-                "status": "ERROR",
-                "message": "Data manager not available",
+                "status": "EPHEMERAL_MODE",
+                "message": "Application is running in ephemeral mode - data storage is not available and will be lost on restart",
                 "matches": {},
                 "statistics": {
                     "total_matches_tracked": 0,
                     "btts_detected": 0,
                     "btts_pending": 0,
-                    "last_update": datetime.now().isoformat()
+                    "last_update": datetime.now().isoformat(),
+                    "ephemeral_mode": True,
+                    "note": "Data is stored in memory only and will be lost when the application restarts"
                 },
                 "last_updated": datetime.now().isoformat()
             })
@@ -1145,14 +1154,15 @@ def get_btts_summary():
         if data_manager is None:
             print("ERROR: data_manager is None - cannot load selections for BTTS summary")
             return jsonify({
-                "status": "ERROR",
-                "message": "Data manager not available",
+                "status": "EPHEMERAL_MODE",
+                "message": "Application is running in ephemeral mode - data storage is not available and will be lost on restart",
                 "selectors": {},
                 "total_matches": 0,
                 "btts_success": 0,
                 "btts_pending": 0,
                 "btts_failed": 0,
-                "accumulator_status": "ERROR"
+                "accumulator_status": "EPHEMERAL_MODE",
+                "note": "Data is stored in memory only and will be lost when the application restarts"
             })
 
         selections = data_manager.load_weekly_selections(week)
@@ -1384,9 +1394,10 @@ def get_bbc_fixtures():
             print("ERROR: data_manager is None - cannot load selections for BBC fixtures")
             return jsonify({
                 "success": False,
-                "error": "Data manager not available",
+                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
+                "ephemeral_mode": True,
                 "last_updated": datetime.now().isoformat()
-            }), 500
+            }), 200  # Return 200 since this is expected behavior in ephemeral mode
 
         selections = data_manager.load_weekly_selections(week) or {}
 
@@ -1560,9 +1571,10 @@ def get_bbc_live_scores():
             print("ERROR: data_manager is None - cannot load selections for BBC live scores")
             return jsonify({
                 "success": False,
-                "error": "Data manager not available",
+                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
+                "ephemeral_mode": True,
                 "last_updated": datetime.now().isoformat()
-            }), 500
+            }), 200  # Return 200 since this is expected behavior in ephemeral mode
 
         selections = data_manager.load_weekly_selections(week) or {}
 
@@ -1771,9 +1783,22 @@ def get_tracker_data():
             print("ERROR: data_manager is None - cannot load selections for tracker data")
             return jsonify({
                 "success": False,
-                "error": "Data manager not available",
+                "error": "Data storage is not available. Application is running in ephemeral mode - data will be lost on restart.",
+                "ephemeral_mode": True,
+                "matches": [],
+                "statistics": {
+                    "total_selectors": len(SELECTORS),
+                    "selected_count": 0,
+                    "placeholder_count": len(SELECTORS),
+                    "btts_detected": 0,
+                    "btts_pending": 0,
+                    "btts_failed": 0,
+                    "completion_percentage": 0,
+                    "ephemeral_mode": True,
+                    "note": "Data is stored in memory only and will be lost when the application restarts"
+                },
                 "last_updated": datetime.now().isoformat()
-            }), 500
+            }), 200  # Return 200 since this is expected behavior in ephemeral mode
 
         selections = data_manager.load_weekly_selections(week)
 

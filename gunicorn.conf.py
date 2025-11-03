@@ -11,15 +11,15 @@ bind = f"{os.getenv('HOST', '0.0.0.0')}:{os.getenv('PORT', '5000')}"
 backlog = 2048
 
 # Worker processes
-workers = multiprocessing.cpu_count() * 2 + 1
+workers = 1
 worker_class = "sync"
-worker_connections = 1000
+worker_connections = 50
 timeout = 30
 keepalive = 2
 
 # Restart workers after this many requests to prevent memory leaks
-max_requests = 1000
-max_requests_jitter = 50
+max_requests = 100
+max_requests_jitter = 10
 
 # Logging
 loglevel = os.getenv('LOG_LEVEL', 'info').lower()
@@ -49,7 +49,7 @@ raw_env = [
 ]
 
 # Preload application for better performance
-preload_app = True
+preload_app = False
 
 # Worker timeout and limits
 graceful_timeout = 30

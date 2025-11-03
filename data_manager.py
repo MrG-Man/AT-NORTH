@@ -44,11 +44,14 @@ class DataManager:
         # Create necessary directories with fallback options
         self._ensure_directories_with_fallback()
 
+        # Ephemeral storage mode flag
+        self._ephemeral_mode = False
+
         # Track initialization status for production debugging
         self.initialization_errors = []
 
-        # Cache TTL for BBC fixtures - MORE AGGRESSIVE (was 24 hours)
-        self.bbc_cache_ttl = timedelta(hours=72)  # 3 days for BBC fixtures
+        # Cache TTL for BBC fixtures - REDUCED TO 24 HOURS FOR 512MB RAM LIMIT
+        self.bbc_cache_ttl = timedelta(hours=24)  # 24 hours for BBC fixtures
 
         # Extended cache for selections (was not cached in memory before)
         self.selections_cache_ttl = timedelta(hours=12)  # 12 hours for selections
@@ -111,7 +114,16 @@ class DataManager:
         # If primary locations failed, try fallback locations
         if not success:
             self.logger.warning("Primary directory creation failed, trying fallback locations...")
-            self._try_fallback_directories()
+            fallback_success = self._try_fallback_directories()
+            if not fallback_success:
+                self.logger.warning("All directory creation attempts failed - application will work without persistent storage")
+                self.initialization_errors.append("All directory creation failed - using ephemeral storage mode")
+                # Set flag to indicate we're in ephemeral mode
+                self._ephemeral_mode = True
+            else:
+                self._ephemeral_mode = False
+        else:
+            self._ephemeral_mode = False
 
     def _try_fallback_directories(self):
         """Try alternative directory locations for production environments."""
@@ -327,6 +339,7 @@ class DataManager:
     def save_weekly_selections(self, selections_data: Dict[str, Any], date: Optional[str] = None) -> bool:
         """
         Save weekly match selections to JSON file with performance optimizations.
+        In ephemeral mode, data is stored in memory only and will be lost on restart.
 
         Args:
             selections_data: Dictionary containing match selections
@@ -346,6 +359,15 @@ class DataManager:
             if not self.validate_selections(selections_data):
                 self.logger.error(f"[DM DEBUG] Invalid selections data for date {date}")
                 return False
+
+            # In ephemeral mode, only store in memory cache
+            if self._ephemeral_mode:
+                self.logger.warning(f"[DM DEBUG] Ephemeral mode: storing selections for {date} in memory only")
+                cache_key = self._get_memory_cache_key("selections", date)
+                self._set_memory_cache(cache_key, selections_data)
+                # Set a longer TTL for ephemeral data (24 hours instead of 5 minutes)
+                self._cache_timestamps[cache_key] = datetime.now() + timedelta(hours=24)
+                return True
 
             filename = f"week_{date}.json"
             filepath = os.path.join(self.selections_path, filename)
@@ -406,6 +428,7 @@ class DataManager:
     def load_weekly_selections(self, date: str) -> Optional[Dict[str, Any]]:
         """
         Load weekly match selections for a specific date with performance optimizations.
+        In ephemeral mode, only checks memory cache.
 
         Args:
             date: Date string in YYYY-MM-DD format
@@ -414,12 +437,17 @@ class DataManager:
             Dictionary containing selections or None if not found/error
         """
         try:
-            # Check memory cache first
+            # Check memory cache first (always check this, even in ephemeral mode)
             cache_key = self._get_memory_cache_key("selections", date)
             cached_data = self._get_memory_cache(cache_key)
             if cached_data:
                 self.logger.debug(f"Returning cached selections for {date}")
                 return cached_data
+
+            # In ephemeral mode, don't try to load from disk
+            if self._ephemeral_mode:
+                self.logger.debug(f"Ephemeral mode: no selections file found for {date} (memory only)")
+                return None
 
             filename = f"week_{date}.json"
             filepath = os.path.join(self.selections_path, filename)
@@ -452,6 +480,7 @@ class DataManager:
     def cache_bbc_fixtures(self, fixtures_data: List[Dict[str, Any]], date: Optional[str] = None) -> bool:
         """
         Cache BBC scraper results with 24-hour TTL and performance optimizations.
+        In ephemeral mode, data is stored in memory only and will be lost on restart.
 
         Args:
             fixtures_data: List of fixture dictionaries from BBC scraper
@@ -463,6 +492,15 @@ class DataManager:
         try:
             if date is None:
                 date = datetime.now().strftime("%Y-%m-%d")
+
+            # In ephemeral mode, only store in memory cache
+            if self._ephemeral_mode:
+                self.logger.warning(f"Ephemeral mode: storing BBC fixtures for {date} in memory only")
+                cache_key = self._get_memory_cache_key("bbc_fixtures", date)
+                self._set_memory_cache(cache_key, fixtures_data)
+                # Set extended TTL for ephemeral data (24 hours instead of 5 minutes)
+                self._cache_timestamps[cache_key] = datetime.now() + timedelta(hours=24)
+                return True
 
             filename = f"bbc_cache_{date}.json"
             filepath = os.path.join(self.fixtures_path, filename)
@@ -506,6 +544,7 @@ class DataManager:
     def get_bbc_fixtures(self, date: str, league: Optional[str] = None) -> Optional[List[Dict[str, Any]]]:
         """
         Retrieve cached BBC fixtures for a specific date with enhanced validation.
+        In ephemeral mode, only checks memory cache.
 
         Args:
             date: Date string in YYYY-MM-DD format
@@ -515,6 +554,18 @@ class DataManager:
             List of fixture dictionaries or None if not found/expired
         """
         try:
+            # Check memory cache first (always check this, even in ephemeral mode)
+            cache_key = self._get_memory_cache_key("bbc_fixtures", date)
+            cached_data = self._get_memory_cache(cache_key)
+            if cached_data:
+                self.logger.debug(f"Returning cached BBC fixtures for {date}")
+                return cached_data
+
+            # In ephemeral mode, don't try to load from disk
+            if self._ephemeral_mode:
+                self.logger.debug(f"Ephemeral mode: no BBC fixtures found for {date} (memory only)")
+                return None
+
             if league:
                 # Use league-specific cache file
                 filename = f"bbc_cache_{date}_{league.replace(' ', '_').lower()}.json"
@@ -573,7 +624,6 @@ class DataManager:
                 return None
 
             # Update memory cache only if all validations pass
-            cache_key = self._get_memory_cache_key("bbc_fixtures", date)
             self._set_memory_cache(cache_key, fixtures)
 
             self.logger.info(f"BBC fixtures retrieved from validated cache for {date}")
@@ -596,11 +646,16 @@ class DataManager:
 
     def cleanup_corrupted_cache_files(self) -> int:
         """Clean up corrupted cache files that contain HTML instead of JSON data.
+        In ephemeral mode, this operation is not available.
 
         Returns:
             int: Number of corrupted files removed
         """
         try:
+            if self._ephemeral_mode:
+                self.logger.warning("Cache cleanup not available in ephemeral mode")
+                return 0
+
             removed_count = 0
             fixtures_path = self.fixtures_path
 
@@ -724,11 +779,16 @@ class DataManager:
     def backup_data(self) -> bool:
         """
         Create a backup of all data files.
+        In ephemeral mode, this operation is not available.
 
         Returns:
             bool: True if backup successful, False otherwise
         """
         try:
+            if self._ephemeral_mode:
+                self.logger.warning("Backup not available in ephemeral mode - data is stored in memory only")
+                return False
+
             # Create backup directory with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_dir = os.path.join(self.backups_path, f"backup_{timestamp}")
@@ -769,6 +829,7 @@ class DataManager:
     def cleanup_old_backups(self, keep_days: int = 30) -> int:
         """
         Remove old backup directories older than specified days.
+        In ephemeral mode, this operation is not available.
 
         Args:
             keep_days: Number of days to keep backups
@@ -777,6 +838,10 @@ class DataManager:
             int: Number of backups removed
         """
         try:
+            if self._ephemeral_mode:
+                self.logger.warning("Backup cleanup not available in ephemeral mode")
+                return 0
+
             removed_count = 0
             cutoff_date = datetime.now() - timedelta(days=keep_days)
 
@@ -809,12 +874,29 @@ class DataManager:
     def get_storage_stats(self) -> Dict[str, Any]:
         """
         Get storage statistics for all data directories.
+        In ephemeral mode, returns memory cache statistics.
 
         Returns:
             Dictionary containing storage statistics
         """
         try:
+            if self._ephemeral_mode:
+                # Return memory cache statistics for ephemeral mode
+                return {
+                    "ephemeral_mode": True,
+                    "memory_cache": {
+                        "entries": len(self._memory_cache),
+                        "estimated_size_kb": len(str(self._memory_cache)) // 1024,
+                        "note": "Data stored in memory only - will be lost on restart"
+                    },
+                    "disk_storage": {
+                        "available": False,
+                        "note": "No persistent storage available"
+                    }
+                }
+
             stats = {
+                "ephemeral_mode": False,
                 "selections": {"files": 0, "size": 0},
                 "fixtures": {"files": 0, "size": 0},
                 "backups": {"files": 0, "size": 0}
@@ -897,6 +979,7 @@ class DataManager:
     def save_live_results(self, live_results_data: List[Dict[str, Any]]) -> bool:
         """
         Save live match results (BTTS, scores, etc.) to JSON file.
+        In ephemeral mode, data is stored in memory only and will be lost on restart.
 
         Args:
             live_results_data: List of live result dictionaries
@@ -905,6 +988,15 @@ class DataManager:
             bool: True if saved successfully, False otherwise
         """
         try:
+            # In ephemeral mode, only store in memory cache
+            if self._ephemeral_mode:
+                self.logger.warning("Ephemeral mode: storing live results in memory only")
+                cache_key = self._get_memory_cache_key("live_results", "current")
+                self._set_memory_cache(cache_key, live_results_data)
+                # Set extended TTL for ephemeral data (1 hour instead of 5 minutes)
+                self._cache_timestamps[cache_key] = datetime.now() + timedelta(hours=1)
+                return True
+
             filename = "live_results.json"
             filepath = os.path.join(self.base_path, filename)
 
@@ -932,11 +1024,24 @@ class DataManager:
     def load_live_results(self) -> Optional[List[Dict[str, Any]]]:
         """
         Load live match results from JSON file.
+        In ephemeral mode, only checks memory cache.
 
         Returns:
             List of live result dictionaries or None if not found/error
         """
         try:
+            # Check memory cache first (always check this, even in ephemeral mode)
+            cache_key = self._get_memory_cache_key("live_results", "current")
+            cached_data = self._get_memory_cache(cache_key)
+            if cached_data:
+                self.logger.debug("Returning cached live results")
+                return cached_data
+
+            # In ephemeral mode, don't try to load from disk
+            if self._ephemeral_mode:
+                self.logger.debug("Ephemeral mode: no live results found (memory only)")
+                return []
+
             filename = "live_results.json"
             filepath = os.path.join(self.base_path, filename)
 
@@ -960,6 +1065,7 @@ class DataManager:
     def add_live_result(self, result_data: Dict[str, Any]) -> bool:
         """
         Add a single live result to the live results file.
+        In ephemeral mode, data is stored in memory only.
 
         Args:
             result_data: Dictionary containing live result data
@@ -974,7 +1080,7 @@ class DataManager:
             # Add new result
             existing_results.append(result_data)
 
-            # Save back to file
+            # Save back to file (or memory in ephemeral mode)
             return self.save_live_results(existing_results)
 
         except Exception as e:
@@ -1004,6 +1110,7 @@ class DataManager:
     def cleanup_old_live_results(self, keep_days: int = 7) -> int:
         """
         Remove live results older than specified days.
+        In ephemeral mode, this only affects memory cache.
 
         Args:
             keep_days: Number of days to keep live results
@@ -1038,7 +1145,7 @@ class DataManager:
                     # Keep results without date
                     filtered_results.append(result)
 
-            # Save filtered results back
+            # Save filtered results back (or update memory cache in ephemeral mode)
             if removed_count > 0:
                 self.save_live_results(filtered_results)
                 self.logger.info(f"Cleaned up {removed_count} old live results")

@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "created_at": "2025-11-03T11:27:54.352867",
+    "version": "1.0",
+    "date": "2025-11-03"
+  },
+  "selections": {
+    "Glynny": {
+      "home_team": "Test FC",
+      "away_team": "Test United",
+      "prediction": "HOME",
+      "confidence": 8
+    }
+  }
+}

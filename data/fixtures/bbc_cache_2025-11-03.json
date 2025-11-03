@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "cached_at": "2025-11-03T11:27:54.353027",
+    "expires_at": "2025-11-04T11:27:54.353029",
+    "ttl_hours": 24,
+    "date": "2025-11-03"
+  },
+  "fixtures": [
+    {
+      "league": "Test League",
+      "home_team": "Test FC",
+      "away_team": "Test United",
+      "kickoff": "15:00"
+    }
+  ]
+}

@@ -58,11 +58,11 @@ class SofascoreLiveScoresAPI:
         self.current_month = datetime.now().strftime("%Y-%m")
         self.api_calls = self._load_usage_data()
 
-        # Live scores specific cache settings - MORE AGGRESSIVE
+        # Live scores specific cache settings - INCREASED TO 5 MINUTES FOR 512MB RAM LIMIT
         self.cache_file = os.path.join(cache_dir, "live_scores_cache.json")
         self.cache = self._load_cache_data()
         self.cache_ttl = {
-            '/events/live': 180,       # 3 minutes cache for live events (was 60)
+            '/events/live': 300,       # 5 minutes cache for live events (increased from 3)
             '/event/*/statistics': 120, # 2 minutes cache for match stats (was 30)
         }
 
@@ -131,16 +131,21 @@ class SofascoreLiveScoresAPI:
                     if data.get('month') != self.current_month:
                         return {'month': self.current_month, 'calls': 0, 'events': []}
                     return data
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, OSError) as e:
+            # Handle case where usage file directory doesn't exist (ephemeral storage)
+            self.logger.warning(f"Could not load usage data: {e}")
             pass
         return {'month': self.current_month, 'calls': 0, 'events': []}
 
     def _save_usage_data(self):
         """Save API usage data to file"""
         try:
+            # Ensure usage file directory exists
+            os.makedirs(os.path.dirname(self.usage_file), exist_ok=True)
             with open(self.usage_file, 'w') as f:
                 json.dump(self.api_calls, f, indent=2)
-        except Exception as e:
+        except (OSError, Exception) as e:
+            # Handle case where usage file directory cannot be created (ephemeral storage)
             self.logger.warning(f"Could not save usage data: {e}")
 
     def _load_cache_data(self):
@@ -149,16 +154,21 @@ class SofascoreLiveScoresAPI:
             if os.path.exists(self.cache_file):
                 with open(self.cache_file, 'r') as f:
                     return json.load(f)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, OSError) as e:
+            # Handle case where cache directory doesn't exist (ephemeral storage)
+            self.logger.warning(f"Could not load cache data: {e}")
             pass
         return {}
 
     def _save_cache_data(self):
         """Save cache data to file"""
         try:
+            # Ensure cache directory exists
+            os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
             with open(self.cache_file, 'w') as f:
                 json.dump(self.cache, f, indent=2)
-        except Exception as e:
+        except (OSError, Exception) as e:
+            # Handle case where cache directory cannot be created (ephemeral storage)
             self.logger.warning(f"Could not save cache data: {e}")
 
     def _generate_cache_key(self, endpoint, params=None):
