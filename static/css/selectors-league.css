@@ -1,5 +1,18 @@
 /* Modern Selectors League - Dark Theme Mobile-First Design */
 
+/* ===== Header Styles ===== */
+.mobile-header {
+    text-align: center;
+    padding: clamp(20px, 5vw, 32px) clamp(16px, 4vw, 20px);
+}
+
+.app-title {
+    font-size: clamp(28px, 7vw, 48px) !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em;
+    margin: 0 !important;
+}
+
 /* ===== League Info Bar ===== */
 .league-info-bar {
     background: rgba(0, 0, 0, 0.2);
