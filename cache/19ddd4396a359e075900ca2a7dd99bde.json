@@ -1,0 +1,198 @@
+{
+  "success": true,
+  "selectors": [
+    {
+      "selector_name": "Glynny",
+      "total_points": 0,
+      "total_matches": 1,
+      "btts_successes": 0,
+      "single_goal_results": 1,
+      "no_goal_results": 0,
+      "btts_percentage": 0.0,
+      "recent_form": [
+        {
+          "week": "2025-11-08",
+          "match_home": "Everton",
+          "match_away": "Fulham",
+          "points": 0,
+          "result_description": "Single Goal",
+          "final_score": "2-0"
+        }
+      ],
+      "recent_points": 0,
+      "recent_average": 0.0,
+      "average_weekly_points": 0.0,
+      "weekly_points": {
+        "2025-11-08": 0
+      }
+    },
+    {
+      "selector_name": "Eamonn Bone",
+      "total_points": 3,
+      "total_matches": 1,
+      "btts_successes": 1,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 100.0,
+      "recent_form": [
+        {
+          "week": "2025-11-08",
+          "match_home": "West Ham United",
+          "match_away": "Burnley",
+          "points": 3,
+          "result_description": "BTTS \u2713",
+          "final_score": "3-2"
+        }
+      ],
+      "recent_points": 3,
+      "recent_average": 3.0,
+      "average_weekly_points": 3.0,
+      "weekly_points": {
+        "2025-11-08": 3
+      }
+    },
+    {
+      "selector_name": "Mickey D",
+      "total_points": 3,
+      "total_matches": 1,
+      "btts_successes": 1,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 100.0,
+      "recent_form": [
+        {
+          "week": "2025-11-08",
+          "match_home": "Middlesbrough",
+          "match_away": "Birmingham City",
+          "points": 3,
+          "result_description": "BTTS \u2713",
+          "final_score": "2-1"
+        }
+      ],
+      "recent_points": 3,
+      "recent_average": 3.0,
+      "average_weekly_points": 3.0,
+      "weekly_points": {
+        "2025-11-08": 3
+      }
+    },
+    {
+      "selector_name": "Rob Carney",
+      "total_points": 0,
+      "total_matches": 0,
+      "btts_successes": 0,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 0,
+      "recent_form": [],
+      "recent_points": 0,
+      "recent_average": 0,
+      "average_weekly_points": 0,
+      "weekly_points": {}
+    },
+    {
+      "selector_name": "Steve H",
+      "total_points": 0,
+      "total_matches": 0,
+      "btts_successes": 0,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 0,
+      "recent_form": [],
+      "recent_points": 0,
+      "recent_average": 0,
+      "average_weekly_points": 0,
+      "weekly_points": {}
+    },
+    {
+      "selector_name": "Danny",
+      "total_points": 0,
+      "total_matches": 0,
+      "btts_successes": 0,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 0,
+      "recent_form": [],
+      "recent_points": 0,
+      "recent_average": 0,
+      "average_weekly_points": 0,
+      "weekly_points": {}
+    },
+    {
+      "selector_name": "Eddie Lee",
+      "total_points": 0,
+      "total_matches": 0,
+      "btts_successes": 0,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 0,
+      "recent_form": [],
+      "recent_points": 0,
+      "recent_average": 0,
+      "average_weekly_points": 0,
+      "weekly_points": {}
+    },
+    {
+      "selector_name": "Fran Radar",
+      "total_points": 0,
+      "total_matches": 0,
+      "btts_successes": 0,
+      "single_goal_results": 0,
+      "no_goal_results": 0,
+      "btts_percentage": 0,
+      "recent_form": [],
+      "recent_points": 0,
+      "recent_average": 0,
+      "average_weekly_points": 0,
+      "weekly_points": {}
+    }
+  ],
+  "weekly_stats": {
+    "weekly_points": {},
+    "selector_performance": [
+      {
+        "selector_name": "Glynny",
+        "weekly_points": [
+          0
+        ],
+        "total_points": 0
+      },
+      {
+        "selector_name": "Eamonn Bone",
+        "weekly_points": [
+          3
+        ],
+        "total_points": 3
+      },
+      {
+        "selector_name": "Mickey D",
+        "weekly_points": [
+          3
+        ],
+        "total_points": 3
+      }
+    ],
+    "most_points": null
+  },
+  "season_stats": {
+    "total_weeks": 2,
+    "average_btts_rate": 66.66666666666667,
+    "active_selectors": 3,
+    "best_btts": {
+      "selector": "Eamonn Bone",
+      "percentage": 100.0
+    },
+    "most_active": {
+      "selector": "Glynny",
+      "matches": 1
+    },
+    "most_points": {
+      "selector": "Eamonn Bone",
+      "points": 3
+    }
+  },
+  "last_updated": "2025-11-11T10:24:39.561657",
+  "current_week": 46,
+  "season_year": 2025,
+  "memory_usage_mb": 39.08203125
+}

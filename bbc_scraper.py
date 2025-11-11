@@ -438,26 +438,9 @@ class BBCSportScraper:
                 logger.error(f"DEBUG: Validation failed - unsupported league '{league_name}' in match data. Supported leagues: {list(self.LEAGUES.keys())}")
                 return False
 
-            # Validate team names are reasonable (not international teams or other invalid entries)
+            # Additional validation: team names should be reasonable length and not contain numbers (except for numbered teams)
             home_team = match.get('home_team', '').strip()
             away_team = match.get('away_team', '').strip()
-
-            # Check for international teams or non-football teams - updated for all English and Scottish leagues
-            invalid_indicators = [
-                'wales', 'australia', 'ukraine', 'kharkiv', 'lviv', 'vynnyky',
-                'miami', 'nashville', 'kyiv', 'polissya', 'cherkasy',
-                'international', 'world cup', 'euro', 'olympic'
-            ]
-
-            home_lower = home_team.lower()
-            away_lower = away_team.lower()
-
-            for indicator in invalid_indicators:
-                if indicator in home_lower or indicator in away_lower:
-                    logger.error(f"Found invalid team name(s) '{home_team}' vs '{away_team}' - appears to be international/other sport match")
-                    return False
-
-            # Additional validation: team names should be reasonable length and not contain numbers (except for numbered teams)
             if (len(home_team) < 3 or len(home_team) > 50 or
                 len(away_team) < 3 or len(away_team) > 50):
                 logger.error(f"Team names have invalid length: '{home_team}' ({len(home_team)}) vs '{away_team}' ({len(away_team)})")
@@ -901,7 +884,7 @@ class BBCSportScraper:
         try:
             # IMPROVED APPROACH: Extract JSON data from window.__INITIAL_DATA__
             # This contains complete, structured match data with proper league groupings
-            json_matches = self._extract_json_from_bbc_page(soup)
+            json_matches = self._extract_json_from_bbc_page(soup, mode)
             if json_matches:
                 matches.extend(json_matches)
                 logger.info(f"Extracted {len(json_matches)} matches from JSON data")
@@ -917,7 +900,7 @@ class BBCSportScraper:
         except Exception as e:
             logger.error(f"Error parsing unified matches: {e}")
             return []
-    def _extract_json_from_bbc_page(self, soup: BeautifulSoup) -> List[Dict]:
+    def _extract_json_from_bbc_page(self, soup: BeautifulSoup, mode: str = MODE_FIXTURES) -> List[Dict]:
         """
         Extract match data from window.__INITIAL_DATA__ JSON embedded in BBC page.
         
@@ -965,7 +948,7 @@ class BBCSportScraper:
                 if 'sport-data-scores-fixtures' in key and 'data' in value:
                     sport_data = value['data']
                     if 'eventGroups' in sport_data:
-                        matches = self._parse_event_groups(sport_data['eventGroups'])
+                        matches = self._parse_event_groups(sport_data['eventGroups'], mode)
                         break
             
             return matches
@@ -977,7 +960,7 @@ class BBCSportScraper:
             logger.error(f"Error extracting JSON from BBC page: {e}")
             return matches
     
-    def _parse_event_groups(self, event_groups: List[Dict]) -> List[Dict]:
+    def _parse_event_groups(self, event_groups: List[Dict], mode: str = MODE_FIXTURES) -> List[Dict]:
         """
         Parse event groups from BBC JSON data structure.
         
@@ -1029,7 +1012,7 @@ class BBCSportScraper:
                 
                 # Parse each event
                 for event in events:
-                    match = self._parse_json_event(event, league_name)
+                    match = self._parse_json_event(event, league_name, mode)
                     if match:
                         matches.append(match)
             
@@ -1039,7 +1022,7 @@ class BBCSportScraper:
             logger.error(f"Error parsing event groups: {e}")
             return matches
     
-    def _parse_json_event(self, event: Dict, league_name: str) -> Optional[Dict]:
+    def _parse_json_event(self, event: Dict, league_name: str, mode: str = MODE_FIXTURES) -> Optional[Dict]:
         """
         Parse a single event from BBC JSON data.
         
@@ -1086,8 +1069,9 @@ class BBCSportScraper:
             status = "not_started"
             match_time = "0'"
 
-            if 'status' in event:
+            if 'status' in event and event['status']:
                 event_status = event['status']
+                logger.debug(f"DEBUG: Match {home_team} vs {away_team} has event_status: {event_status}")
                 if event_status in ['InProgress', 'Live']:
                     status = "live"
                     match_time = "LIVE"
@@ -1097,6 +1081,20 @@ class BBCSportScraper:
                 elif event_status == 'HalfTime':
                     status = "halftime"
                     match_time = "HT"
+            elif mode == self.MODE_LIVE:
+                # For live mode (results), if no status field or empty, assume finished
+                status = "finished"
+                match_time = "FT"
+                logger.debug(f"DEBUG: Match {home_team} vs {away_team} has no status field or empty, setting to finished for live mode")
+
+            # Additional check: if scores are present and non-zero, assume finished
+            if 'home' in event and 'score' in event['home'] and 'away' in event and 'score' in event['away']:
+                home_score = int(event['home']['score'])
+                away_score = int(event['away']['score'])
+                if home_score > 0 or away_score > 0:
+                    status = "finished"
+                    match_time = "FT"
+                    logger.debug(f"DEBUG: Match {home_team} vs {away_team} has scores ({home_score}-{away_score}), setting to finished")
 
             # Extract scores if available
             if 'home' in event and 'score' in event['home']:
@@ -1212,20 +1210,6 @@ class BBCSportScraper:
                 len(home_team) > 50 or len(away_team) > 50):
                 return None
 
-            # CRITICAL: Filter out international teams and invalid matches - updated for all English and Scottish leagues (including National League)
-            invalid_indicators = [
-                'wales', 'australia', 'ukraine', 'kharkiv', 'lviv', 'vynnyky',
-                'miami', 'nashville', 'kyiv', 'polissya', 'cherkasy',
-                'international', 'world cup', 'euro', 'olympic'
-            ]
-
-            home_lower = home_team.lower()
-            away_lower = away_team.lower()
-
-            for indicator in invalid_indicators:
-                if indicator in home_lower or indicator in away_lower:
-                    logger.debug(f"Filtering out invalid match: '{home_team}' vs '{away_team}'")
-                    return None
 
             # Determine league - look for league headers in nearby elements
             league_name = self._identify_league_from_context(match_element)
