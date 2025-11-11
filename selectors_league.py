@@ -6,7 +6,6 @@ Calculates historical performance and league standings for selectors
 import json
 import os
 import psutil
-import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import logging
@@ -498,8 +497,7 @@ class SelectorsLeague:
 
     def _get_cache_key(self, view_filter: str) -> str:
         """Generate cache key for league data"""
-        content = f"league_data_{view_filter}_{datetime.now().strftime('%Y-%m-%d')}"
-        return hashlib.md5(content.encode()).hexdigest()
+        return f"league_data_{view_filter}"
 
     def _get_cached_league_data(self, cache_key: str) -> Optional[Dict[str, Any]]:
         """Retrieve cached league data if valid"""
