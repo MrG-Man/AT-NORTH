@@ -281,7 +281,8 @@ class BBCSportScraper:
 
     def _get_cached_data(self, cache_key: str, date: str, league_name: str) -> Optional[Dict]:
         """Retrieve cached data if available and not expired using DataManager."""
-        fixtures = data_manager.get_bbc_fixtures(date, league_name)
+        # For unified scraping, don't use league-specific cache filename
+        fixtures = data_manager.get_bbc_fixtures(date)
         if fixtures:
             logger.info(f"Using cached BBC data for {date} - {league_name}")
             # Ensure fixtures is a list of dictionaries
