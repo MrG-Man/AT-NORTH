@@ -3,7 +3,7 @@
   "selectors": [
     {
       "selector_name": "Glynny",
-      "total_points": 0,
+      "total_points": 24,
       "total_matches": 1,
       "btts_successes": 0,
       "single_goal_results": 1,
@@ -21,14 +21,14 @@
       ],
       "recent_points": 0,
       "recent_average": 0.0,
-      "average_weekly_points": 0.0,
+      "average_weekly_points": 24.0,
       "weekly_points": {
         "2025-11-08": 0
       }
     },
     {
       "selector_name": "Eamonn Bone",
-      "total_points": 3,
+      "total_points": 33,
       "total_matches": 1,
       "btts_successes": 1,
       "single_goal_results": 0,
@@ -46,14 +46,14 @@
       ],
       "recent_points": 3,
       "recent_average": 3.0,
-      "average_weekly_points": 3.0,
+      "average_weekly_points": 33.0,
       "weekly_points": {
         "2025-11-08": 3
       }
     },
     {
       "selector_name": "Mickey D",
-      "total_points": 3,
+      "total_points": 24,
       "total_matches": 1,
       "btts_successes": 1,
       "single_goal_results": 0,
@@ -71,14 +71,14 @@
       ],
       "recent_points": 3,
       "recent_average": 3.0,
-      "average_weekly_points": 3.0,
+      "average_weekly_points": 24.0,
       "weekly_points": {
         "2025-11-08": 3
       }
     },
     {
       "selector_name": "Rob Carney",
-      "total_points": 0,
+      "total_points": 21,
       "total_matches": 0,
       "btts_successes": 0,
       "single_goal_results": 0,
@@ -92,7 +92,7 @@
     },
     {
       "selector_name": "Steve H",
-      "total_points": 0,
+      "total_points": 21,
       "total_matches": 0,
       "btts_successes": 0,
       "single_goal_results": 0,
@@ -106,7 +106,7 @@
     },
     {
       "selector_name": "Danny",
-      "total_points": 0,
+      "total_points": 18,
       "total_matches": 0,
       "btts_successes": 0,
       "single_goal_results": 0,
@@ -120,7 +120,7 @@
     },
     {
       "selector_name": "Eddie Lee",
-      "total_points": 0,
+      "total_points": 6,
       "total_matches": 0,
       "btts_successes": 0,
       "single_goal_results": 0,
@@ -134,7 +134,7 @@
     },
     {
       "selector_name": "Fran Radar",
-      "total_points": 0,
+      "total_points": 24,
       "total_matches": 0,
       "btts_successes": 0,
       "single_goal_results": 0,
@@ -155,21 +155,21 @@
         "weekly_points": [
           0
         ],
-        "total_points": 0
+        "total_points": 24
       },
       {
         "selector_name": "Eamonn Bone",
         "weekly_points": [
           3
         ],
-        "total_points": 3
+        "total_points": 33
       },
       {
         "selector_name": "Mickey D",
         "weekly_points": [
           3
         ],
-        "total_points": 3
+        "total_points": 24
       }
     ],
     "most_points": null
@@ -188,11 +188,11 @@
     },
     "most_points": {
       "selector": "Eamonn Bone",
-      "points": 3
+      "points": 33
     }
   },
-  "last_updated": "2025-11-11T10:24:39.561657",
+  "last_updated": "2025-11-11T10:49:43.122895",
   "current_week": 46,
   "season_year": 2025,
-  "memory_usage_mb": 39.08203125
+  "memory_usage_mb": 55.1015625
 }

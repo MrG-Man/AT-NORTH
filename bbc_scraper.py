@@ -421,8 +421,14 @@ class BBCSportScraper:
                     if len(value) > 1000:
                         logger.error(f"Found extremely long value in match data for key '{key}': {len(value)} characters")
                         return False
-
-            # Validate required fields
+        
+                    # Check for invalid indicators
+                    invalid_indicators = ['Postponed', 'Cancelled', 'Abandoned']
+                    if any(indicator.lower() in value.lower() for indicator in invalid_indicators):
+                        logger.error(f"Found invalid indicator in match data for key '{key}': {value}")
+                        return False
+        
+                    # Validate required fields
             required_fields = ["league", "home_team", "away_team", "kickoff"]
             for field in required_fields:
                 if field not in match:
@@ -1081,26 +1087,17 @@ class BBCSportScraper:
                 elif event_status == 'HalfTime':
                     status = "halftime"
                     match_time = "HT"
-            elif mode == self.MODE_LIVE:
-                # For live mode (results), if no status field or empty, assume finished
-                status = "finished"
-                match_time = "FT"
-                logger.debug(f"DEBUG: Match {home_team} vs {away_team} has no status field or empty, setting to finished for live mode")
-
-            # Additional check: if scores are present and non-zero, assume finished
-            if 'home' in event and 'score' in event['home'] and 'away' in event and 'score' in event['away']:
-                home_score = int(event['home']['score'])
-                away_score = int(event['away']['score'])
-                if home_score > 0 or away_score > 0:
-                    status = "finished"
-                    match_time = "FT"
-                    logger.debug(f"DEBUG: Match {home_team} vs {away_team} has scores ({home_score}-{away_score}), setting to finished")
 
             # Extract scores if available
             if 'home' in event and 'score' in event['home']:
                 home_score = int(event['home']['score'])
             if 'away' in event and 'score' in event['away']:
                 away_score = int(event['away']['score'])
+
+            # Override status if scores are present (finished matches with scores)
+            if home_score > 0 or away_score > 0:
+                status = "finished"
+                match_time = "FT"
 
             return {
                 "league": league_name,
@@ -1195,7 +1192,13 @@ class BBCSportScraper:
 
             # Get the full match text
             match_text = match_text_element.strip()
-
+        
+            # Check for invalid indicators
+            invalid_indicators = ['Postponed', 'Cancelled', 'Abandoned']
+            if any(indicator.lower() in match_text.lower() for indicator in invalid_indicators):
+                logger.debug(f"Found invalid indicator in match text: {match_text}")
+                return None
+        
             # Extract teams from pattern like "Team A versus Team B kick off 15:00"
             versus_pattern = re.search(r'(.+?)\s+versus\s+(.+?)\s+kick off (\d{1,2}:\d{2})', match_text, re.IGNORECASE)
             if not versus_pattern:

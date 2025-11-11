@@ -146,16 +146,17 @@ class SelectorsLeague:
     def _calculate_selector_performance(self, selector_name: str, selection_files: List[str]) -> Optional[Dict[str, Any]]:
         """
         Calculate performance metrics for a specific selector
-        
+
         Args:
             selector_name: Name of the selector
             selection_files: List of selection files
-            
+
         Returns:
             Dictionary containing selector performance data
         """
         try:
-            total_points = 0
+            # Start with historical points accumulated from previous weeks
+            total_points = self.historical_points.get(selector_name, 0)
             total_matches = 0
             btts_successes = 0
             single_goal_results = 0
