@@ -36,14 +36,14 @@ class SelectorsLeague:
         ]
         # Historical points data (prior to Sat 1 Nov)
         self.historical_points = {
-            "Eamonn Bone": 30,
+            "Eamonn Bone": 33,
             "Fran Radar": 24,
-            "Glynny": 24,
+            "Glynny": 27,
             "Mickey D": 21,
-            "Rob Carney": 21,
-            "Steve H": 21,
+            "Rob Carney": 18,
+            "Steve H": 24,
             "Danny": 18,
-            "Eddie Lee": 6
+            "Eddie Lee": 9
         }
 
         # Initialize cache
@@ -486,7 +486,7 @@ class SelectorsLeague:
         Check if it's Sunday and Saturday matches have finished.
         Returns True if today is Sunday and Saturday's matches are complete.
         """
-        return True  # Temporarily set to True for fresh data calculation
+        return datetime.now().weekday() == 6
 
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
