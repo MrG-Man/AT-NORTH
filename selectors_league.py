@@ -259,8 +259,12 @@ class SelectorsLeague:
             Dictionary containing result information
         """
         try:
-            # Use rate-limited scraper for league calculations
-            scraper = BBCSportScraper(rate_limit=2.0, monthly_limit=500)  # More conservative limits for league calculations
+            # Use rate-limited scraper for league calculations that bypasses cache to allow matches at any time
+            class NoCacheScraper(BBCSportScraper):
+                def _get_cached_data(self, cache_key: str, date: str, league_name: str) -> Optional[Dict]:
+                    return None
+
+            scraper = NoCacheScraper(rate_limit=2.0, monthly_limit=500)  # More conservative limits for league calculations
             bbc_results = scraper.scrape_live_scores(match_date.strftime('%Y-%m-%d'))
 
             if not bbc_results or not bbc_results.get('live_matches'):

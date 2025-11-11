@@ -1096,7 +1096,7 @@ class BBCSportScraper:
                 away_score = int(event['away']['score'])
 
             # Override status if scores are present (finished matches with scores)
-            if home_score > 0 or away_score > 0:
+            if 'score' in event.get('home', {}) and 'score' in event.get('away', {}):
                 status = "finished"
                 match_time = "FT"
 
