@@ -486,7 +486,8 @@ class SelectorsLeague:
         Check if it's Sunday and Saturday matches have finished.
         Returns True if today is Sunday and Saturday's matches are complete.
         """
-        return True  # Temporarily set to True for fresh data calculation
+        today = datetime.now()
+        return today.weekday() == 6  # 6 = Sunday
 
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
