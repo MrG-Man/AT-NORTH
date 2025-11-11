@@ -65,15 +65,30 @@ class SelectorsLeague:
         try:
             # Check if we should run calculations (only on Sundays)
             if not self._is_sunday_after_saturday_matches():
-                # Return cached data if available, otherwise empty data
+                # Return cached data if available, otherwise historical data
                 cache_key = self._get_cache_key(view_filter)
                 cached_data = self._get_cached_league_data(cache_key)
                 if cached_data:
                     logger.info("Not Sunday - using cached league data")
                     return cached_data
                 else:
-                    logger.info("Not Sunday - returning empty league data")
-                    return self._create_empty_league_data()
+                    logger.info("Not Sunday - calculating historical league data")
+                    self._update_memory_usage()
+                    selector_performance = self._create_historical_performance_data()
+                    league_stats = self._calculate_league_statistics(selector_performance)
+                    filtered_selectors = self._apply_view_filter(selector_performance, view_filter)
+                    result = {
+                        'success': True,
+                        'selectors': filtered_selectors,
+                        'weekly_stats': self._calculate_weekly_statistics(selector_performance, []),
+                        'season_stats': league_stats,
+                        'last_updated': datetime.now().isoformat(),
+                        'current_week': self._get_current_week_number(),
+                        'season_year': datetime.now().year,
+                        'memory_usage_mb': self._memory_usage
+                    }
+                    self._update_memory_usage()
+                    return result
 
             # Get cache key for Sunday calculations
             cache_key = self._get_cache_key(view_filter)
@@ -419,26 +434,27 @@ class SelectorsLeague:
         """Apply view filter to selector performance data"""
         try:
             selectors_list = list(selector_performance.values())
-            
+
             if view_filter == 'this-season':
                 # Filter to selectors with matches this season
-                return [s for s in selectors_list if s['total_matches'] > 0]
+                filtered = [s for s in selectors_list if s['total_matches'] > 0]
+                return sorted(filtered, key=lambda x: x['total_points'], reverse=True)
             elif view_filter == 'recent':
                 # Filter to selectors active in last 10 weeks
                 cutoff_date = datetime.now() - timedelta(weeks=10)
                 recent_selectors = []
                 for selector in selectors_list:
-                    recent_matches = [r for r in selector['recent_form'] if 
+                    recent_matches = [r for r in selector['recent_form'] if
                                     datetime.strptime(r['week'], '%Y-%m-%d') >= cutoff_date]
                     if recent_matches:
                         recent_selectors.append(selector)
-                return recent_selectors
+                return sorted(recent_selectors, key=lambda x: x['total_points'], reverse=True)
             else:  # overall
-                return selectors_list
-                
+                return sorted(selectors_list, key=lambda x: x['total_points'], reverse=True)
+
         except Exception as e:
             logger.error(f"Error applying view filter: {e}")
-            return list(selector_performance.values())
+            return sorted(list(selector_performance.values()), key=lambda x: x['total_points'], reverse=True)
     
     def _get_current_week_number(self) -> int:
         """Get current week number of the year"""
