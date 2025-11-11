@@ -33,7 +33,7 @@ SCRAPING METHODOLOGY:
 - Uses https://www.bbc.co.uk/sport/football/scores-fixtures/YYYY-MM-DD
 - Parses ALL matches from this single page
 - Filters to only supported leagues (all English and Scottish leagues)
-- Strictly enforces 15:00 kickoff times for fixtures
+- Strictly enforces 15:00 and 15:03 kickoff times for fixtures
 - Handles both fixture and live score modes
 
 USAGE:
@@ -528,21 +528,22 @@ class BBCSportScraper:
                 # NEW BBC Sport structure: Look for match text with "versus" pattern
                 match_text = None
 
-                # Look for text containing "versus" and "kick off 15:00"
-                for element in match_element.find_all(string=lambda text: text and 'versus' in text.lower() and 'kick off 15:00' in text):
+                # Look for text containing "versus" and "kick off 15:00" or "15:03"
+                for element in match_element.find_all(string=lambda text: text and 'versus' in text.lower() and ('kick off 15:00' in text or 'kick off 15:03' in text)):
                     match_text = element.strip()
                     break
 
                 if not match_text:
                     return None
 
-                # Parse team names from match text like "Team A versus Team B kick off 15:00"
+                # Parse team names from match text like "Team A versus Team B kick off 15:00" or "15:03"
                 try:
-                    # Extract teams from pattern "Home versus Away kick off 15:00"
-                    versus_pattern = re.search(r'(.+?)\s+versus\s+(.+?)\s+kick off 15:00', match_text, re.IGNORECASE)
+                    # Extract teams from pattern "Home versus Away kick off 15:00" or "15:03"
+                    versus_pattern = re.search(r'(.+?)\s+versus\s+(.+?)\s+kick off (15:00|15:03)', match_text, re.IGNORECASE)
                     if versus_pattern:
                         home_team = versus_pattern.group(1).strip()
                         away_team = versus_pattern.group(2).strip()
+                        kickoff = versus_pattern.group(3).strip()
                     else:
                         return None
 
@@ -565,8 +566,8 @@ class BBCSportScraper:
                 venue_element = match_element.find('span', class_=re.compile(r'ssrcss.*Venue|stadium'))
                 venue = venue_element.get_text(strip=True) if venue_element else "TBC"
 
-                # Validate that this is exactly 15:00
-                if kickoff != "15:00":
+                # Validate that this is exactly 15:00 or 15:03
+                if kickoff not in ["15:00", "15:03"]:
                     return None
 
                 return {
@@ -764,8 +765,8 @@ class BBCSportScraper:
                                         else:
                                             kickoff = "15:00"
 
-                                        # Only return matches at 15:00
-                                        if kickoff == "15:00":
+                                        # Only return matches at 15:00 or 15:03
+                                        if kickoff in ["15:00", "15:03"]:
                                             return {
                                                 "league": league_name,
                                                 "home_team": home_team,
@@ -1062,9 +1063,9 @@ class BBCSportScraper:
             elif 'time' in event and 'displayTimeUK' in event['time']:
                 kickoff = event['time']['displayTimeUK']
 
-            # CRITICAL: Only include matches at exactly 15:00 for fixtures
-            if kickoff != "15:00":
-                logger.info(f"DEBUG: Skipping match {home_team} vs {away_team} in {league_name} due to kickoff time {kickoff} (not 15:00)")
+            # CRITICAL: Only include matches at exactly 15:00 or 15:03 for fixtures
+            if kickoff not in ["15:00", "15:03"]:
+                logger.info(f"DEBUG: Skipping match {home_team} vs {away_team} in {league_name} due to kickoff time {kickoff} (not 15:00 or 15:03)")
                 return None
 
             # Extract venue if available
@@ -1200,7 +1201,7 @@ class BBCSportScraper:
                 logger.debug(f"Found invalid indicator in match text: {match_text}")
                 return None
         
-            # Extract teams from pattern like "Team A versus Team B kick off 15:00"
+            # Extract teams from pattern like "Team A versus Team B kick off 15:00" or "15:03"
             versus_pattern = re.search(r'(.+?)\s+versus\s+(.+?)\s+kick off (\d{1,2}:\d{2})', match_text, re.IGNORECASE)
             if not versus_pattern:
                 return None
@@ -1208,6 +1209,10 @@ class BBCSportScraper:
             home_team = versus_pattern.group(1).strip()
             away_team = versus_pattern.group(2).strip()
             kickoff = versus_pattern.group(3).strip()
+
+            # Validate kickoff time is 15:00 or 15:03
+            if kickoff not in ["15:00", "15:03"]:
+                return None
 
             # Validate team names - enhanced validation
             if (len(home_team) < 3 or len(away_team) < 3 or
@@ -1523,7 +1528,7 @@ class BBCSportScraper:
 
     def scrape_saturday_3pm_fixtures(self) -> Dict:
         """
-        Scrape next Saturday's 15:00 fixtures using the unified BBC page approach.
+        Scrape next Saturday's 15:00 and 15:03 fixtures using the unified BBC page approach.
 
         Returns:
             Dictionary containing scraping metadata and matches
@@ -1535,9 +1540,9 @@ class BBCSportScraper:
         # Use the unified scraping approach with the FIXED parsing logic
         unified_result = self.scrape_unified_bbc_matches(next_saturday, self.MODE_FIXTURES)
 
-        # Filter for exactly 15:00 matches
+        # Filter for exactly 15:00 or 15:03 matches
         all_matches = unified_result.get("matches", [])
-        matches_3pm = [match for match in all_matches if match.get('kickoff') == '15:00']
+        matches_3pm = [match for match in all_matches if match.get('kickoff') in ['15:00', '15:03']]
 
         result = {
             "scraping_date": unified_result.get("scraping_date"),
@@ -1834,7 +1839,7 @@ def print_bbc_scraper_results(result):
     print()
 
     if not result['matches_3pm']:
-        print("❌ No 15:00 matches found for the target date.")
+        print("❌ No 15:00 or 15:03 matches found for the target date.")
         print("This may be due to:")
         print("  • International break")
         print("  • Scheduled weekend off")
