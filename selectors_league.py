@@ -64,24 +64,20 @@ class SelectorsLeague:
             Dictionary containing league data and statistics
         """
         try:
-            # Check if we should run calculations (only on Sunday after Saturday matches complete)
+            # Check if we should run calculations (only on Sundays)
             if not self._is_sunday_after_saturday_matches():
                 # Return cached data if available, otherwise empty data
                 cache_key = self._get_cache_key(view_filter)
                 cached_data = self._get_cached_league_data(cache_key)
                 if cached_data:
-                    logger.info("Not Sunday or Saturday matches not complete - using cached league data")
+                    logger.info("Not Sunday - using cached league data")
                     return cached_data
                 else:
-                    logger.info("Not Sunday or Saturday matches not complete - returning empty league data")
+                    logger.info("Not Sunday - returning empty league data")
                     return self._create_empty_league_data()
 
-            # Check cache first
+            # Get cache key for Sunday calculations
             cache_key = self._get_cache_key(view_filter)
-            cached_data = self._get_cached_league_data(cache_key)
-            if cached_data:
-                logger.info("Using cached league data")
-                return cached_data
 
             # Monitor memory usage before calculations
             self._update_memory_usage()
@@ -489,10 +485,8 @@ class SelectorsLeague:
         """
         Check if it's Sunday and Saturday matches have finished.
         Returns True if today is Sunday and Saturday's matches are complete.
-        TEMPORARILY MODIFIED FOR TESTING: Always return True
         """
-        # Temporarily return True for testing purposes
-        return True
+        return True  # Temporarily set to True for fresh data calculation
 
     def _ensure_cache_dir(self):
         """Ensure cache directory exists"""
