@@ -2430,3 +2430,13 @@ werkzeug.exceptions.BadRequest: 400 Bad Request: The browser (or proxy) sent a r
 2025-11-15 16:02:28,151 - DataManager - WARNING - [DEBUG] DataManager: No selections file found for date 2025-11-15 at data/selections/week_2025-11-15.json
 2025-11-15 16:03:37,848 - DataManager - WARNING - Removing cache file with invalid fixture data: bbc_cache_2025-11-15.json
 2025-11-15 16:03:37,853 - DataManager - WARNING - [DEBUG] DataManager: No selections file found for date 2025-11-15 at data/selections/week_2025-11-15.json
+2025-11-15 17:11:09,819 - DataManager - WARNING - Removing cache file with invalid fixture data: bbc_cache_2025-11-15.json
+2025-11-15 17:11:24,861 - DataManager - WARNING - [DEBUG] DataManager: No selections file found for date 2025-11-15 at data/selections/week_2025-11-15.json
+2025-11-15 17:11:24,861 - DataManager - WARNING - No BBC cache file found for date 2025-11-15
+2025-11-15 17:12:01,763 - DataManager - WARNING - Invalid fixture data structure for 2025-11-15
+2025-11-15 17:12:40,495 - DataManager - ERROR - [DEBUG] DataManager: Invalid selections data in file for date 2025-11-15
+2025-11-15 17:12:40,495 - DataManager - WARNING - No BBC cache file found for date 2025-11-15
+2025-11-15 17:13:11,403 - DataManager - WARNING - No BBC cache file found for date 2025-11-15
+2025-11-15 17:15:11,756 - DataManager - WARNING - No BBC cache file found for date 2025-11-15
+2025-11-15 17:15:46,312 - DataManager - WARNING - Invalid fixture data structure for 2025-11-15
+2025-11-15 17:16:05,902 - DataManager - WARNING - No BBC cache file found for date 2025-11-15

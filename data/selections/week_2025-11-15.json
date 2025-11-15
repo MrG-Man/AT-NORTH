@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "created_at": "2025-11-15T12:00:00",
+    "version": "1.0",
+    "date": "2025-11-15"
+  },
+  "selections": {
+    "Glynny": {
+      "home_team": "AFC Wimbledon",
+      "away_team": "Salford City",
+      "prediction": "BTTS_YES",
+      "confidence": 7,
+      "assigned_at": "2025-11-15T12:00:00"
+    },
+    "Eamonn Bone": {
+      "home_team": "Bradford City",
+      "away_team": "Walsall",
+      "prediction": "BTTS_YES",
+      "confidence": 6,
+      "assigned_at": "2025-11-15T12:00:00"
+    }
+  }
+}

@@ -33,7 +33,7 @@ SCRAPING METHODOLOGY:
 - Uses https://www.bbc.co.uk/sport/football/scores-fixtures/YYYY-MM-DD
 - Parses ALL matches from this single page
 - Filters to only supported leagues (all English and Scottish leagues)
-- Strictly enforces 15:00 and 15:03 kickoff times for fixtures
+- Scrapes matches at ALL kickoff times (not just 15:00/15:03)
 - Handles both fixture and live score modes
 
 USAGE:
@@ -1526,9 +1526,10 @@ class BBCSportScraper:
 
         return result
 
-    def scrape_saturday_3pm_fixtures(self) -> Dict:
+    def scrape_saturday_fixtures(self) -> Dict:
         """
-        Scrape next Saturday's 15:00 and 15:03 fixtures using the unified BBC page approach.
+        Scrape next Saturday's fixtures using the unified BBC page approach.
+        Now includes ALL kickoff times, not just 15:00/15:03.
 
         Returns:
             Dictionary containing scraping metadata and matches
@@ -1537,23 +1538,23 @@ class BBCSportScraper:
 
         logger.info(f"Scraping unified BBC fixtures for Saturday {next_saturday}")
 
-        # Use the unified scraping approach with the FIXED parsing logic
+        # Use the unified scraping approach - now includes ALL kickoff times
         unified_result = self.scrape_unified_bbc_matches(next_saturday, self.MODE_FIXTURES)
 
-        # Filter for exactly 15:00 or 15:03 matches
+        # Include ALL matches (no time filtering)
         all_matches = unified_result.get("matches", [])
-        matches_3pm = [match for match in all_matches if match.get('kickoff') in ['15:00', '15:03']]
+        matches_3pm = all_matches  # All matches, not just 3pm
 
         result = {
             "scraping_date": unified_result.get("scraping_date"),
             "next_saturday": unified_result.get("target_date"),
-            "matches_3pm": matches_3pm,
+            "matches": matches_3pm,  # All matches (renamed from matches_3pm)
             "all_matches": all_matches,
-            "total_3pm_matches": len(matches_3pm),
+            "total_matches": len(matches_3pm),
             "total_all_matches": len(all_matches)
         }
 
-        logger.info(f"Total matches found: {len(all_matches)} ({len(matches_3pm)} at 15:00)")
+        logger.info(f"Total matches found: {len(all_matches)}")
 
         # Log summary by league for transparency
         league_summary = {}
@@ -1763,11 +1764,11 @@ def test_new_bbc_scraper():
     # Test fixture scraping
     print("\n4. Testing Fixture Scraping:")
     try:
-        fixture_result = scraper.scrape_saturday_3pm_fixtures()
-        print(f"   Found {len(fixture_result['matches_3pm'])} 15:00 fixtures")
-        if fixture_result['matches_3pm']:
+        fixture_result = scraper.scrape_saturday_fixtures()
+        print(f"   Found {len(fixture_result['matches'])} fixtures")
+        if fixture_result['matches']:
             print("   Sample fixtures:")
-            for match in fixture_result['matches_3pm'][:3]:
+            for match in fixture_result['matches'][:3]:
                 print(f"     {match['home_team']} vs {match['away_team']} ({match['league']}) at {match['kickoff']}")
     except Exception as e:
         print(f"   Fixture scraping test failed: {e}")
@@ -1786,13 +1787,13 @@ def test_api_endpoints():
     # Test fixtures endpoint logic
     print("\n1. Testing BBC Fixtures API Logic:")
     try:
-        scraper_result = scraper.scrape_saturday_3pm_fixtures()
+        scraper_result = scraper.scrape_saturday_fixtures()
         api_response = {
             "success": True,
             "scraping_date": scraper_result.get("scraping_date"),
             "next_saturday": scraper_result.get("next_saturday"),
-            "matches": scraper_result.get("matches_3pm", []),
-            "total_matches": len(scraper_result.get("matches_3pm", [])),
+            "matches": scraper_result.get("matches", []),
+            "total_matches": len(scraper_result.get("matches", [])),
         }
         print(f"   Success: {api_response['success']}")
         print(f"   Total matches: {api_response['total_matches']}")
@@ -1822,7 +1823,7 @@ def test_api_endpoints():
 def main():
     """Main function for testing the scraper."""
     scraper = BBCSportScraper(rate_limit=0.5)  # Faster rate limit for testing
-    result = scraper.scrape_saturday_3pm_fixtures()
+    result = scraper.scrape_saturday_fixtures()
 
     # Print formatted output similar to admin page style
     print_bbc_scraper_results(result)
@@ -1835,11 +1836,11 @@ def print_bbc_scraper_results(result):
     print("=" * 80)
     print(f"📅 Scraping Date: {result['scraping_date']}")
     print(f"🎯 Target Date: {result['next_saturday']}")
-    print(f"⚽ Total Matches Found: {len(result['matches_3pm'])}")
+    print(f"⚽ Total Matches Found: {len(result['matches'])}")
     print()
 
-    if not result['matches_3pm']:
-        print("❌ No 15:00 or 15:03 matches found for the target date.")
+    if not result['matches']:
+        print("❌ No matches found for the target date.")
         print("This may be due to:")
         print("  • International break")
         print("  • Scheduled weekend off")
@@ -1848,7 +1849,7 @@ def print_bbc_scraper_results(result):
 
     # Group matches by league
     leagues = {}
-    for match in result['matches_3pm']:
+    for match in result['matches']:
         league = match['league']
         if league not in leagues:
             leagues[league] = []

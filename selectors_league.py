@@ -286,22 +286,45 @@ class SelectorsLeague:
             home_team = selector_data.get('home_team', '').strip()
             away_team = selector_data.get('away_team', '').strip()
 
+            logger.info(f"DEBUG: Looking for match {home_team} vs {away_team} in {len(bbc_results['live_matches'])} live matches")
+
             matching_result = None
             for result in bbc_results['live_matches']:
                 result_home = result.get('home_team', '').strip()
                 result_away = result.get('away_team', '').strip()
 
+                logger.debug(f"DEBUG: Comparing with live match: {result_home} vs {result_away}")
+
                 # Check for exact match (home-away or away-home)
                 if ((result_home == home_team and result_away == away_team) or
                     (result_home == away_team and result_away == home_team)):
                     matching_result = result
+                    logger.info(f"DEBUG: Found exact match for {home_team} vs {away_team}")
                     break
 
             if not matching_result:
-                return None
+                logger.warning(f"DEBUG: No matching result found for {home_team} vs {away_team}. This match does not exist in current BBC data.")
+                logger.warning(f"DEBUG: Selection was made for a match that is not in today's fixtures/live scores.")
+                logger.warning(f"DEBUG: Available matches (first 10):")
+                for result in bbc_results['live_matches'][:10]:  # Show first 10 for debugging
+                    logger.warning(f"  - {result.get('home_team')} vs {result.get('away_team')} ({result.get('status')})")
 
-            # Only process finished matches
-            if matching_result.get('status') != 'finished':
+                # Return a special result indicating the match was not found
+                return {
+                    'points': 0,
+                    'description': 'Match not found in BBC data',
+                    'final_score': 'N/A'
+                }
+
+            # Process finished matches OR matches that have scores (indicating they started)
+            match_status = matching_result.get('status')
+            home_score = matching_result.get('home_score', 0)
+            away_score = matching_result.get('away_score', 0)
+            has_scores = home_score > 0 or away_score > 0
+
+            # Only skip if match hasn't started and has no scores
+            if match_status == 'not_started' and not has_scores:
+                logger.debug(f"DEBUG: Match {home_team} vs {away_team} not started yet (status: {match_status})")
                 return None
 
             home_score = matching_result.get('home_score', 0)

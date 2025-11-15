@@ -443,7 +443,7 @@ def admin():
                 try:
                     app.logger.info(f"[DEBUG] Admin route: Starting BBC scraping for {target_date}")
                     scraper = BBCSportScraper()
-                    scraper_result = scraper.scrape_saturday_3pm_fixtures()
+                    scraper_result = scraper.scrape_saturday_fixtures()
                     matches = scraper_result.get("matches_3pm", [])
                     target_date = scraper_result.get("next_saturday", target_date)
                     app.logger.info(f"[DEBUG] Admin route: Scraped {len(matches)} matches for {target_date}")
@@ -709,7 +709,7 @@ def assign_match():
                     return jsonify({"success": False, "error": "BBC scraper not available"}), 500
 
                 scraper = BBCSportScraper()
-                scraper_result = scraper.scrape_saturday_3pm_fixtures()
+                scraper_result = scraper.scrape_saturday_fixtures()
                 matches = scraper_result.get("matches_3pm", [])
                 app.logger.info(f"[API DEBUG] Scraped {len(matches)} matches")
 
@@ -1116,9 +1116,18 @@ def get_btts_status():
             # Find matching live data
             live_match = None
             for bbc_match in all_live_matches:
-                if (bbc_match.get('home_team') == home_team and
-                    bbc_match.get('away_team') == away_team):
+                bbc_home = bbc_match.get('home_team', '').strip()
+                bbc_away = bbc_match.get('away_team', '').strip()
+                sel_home = home_team.strip() if home_team else ''
+                sel_away = away_team.strip() if away_team else ''
+
+                # Debug logging for team name matching
+                if bbc_home and bbc_away and sel_home and sel_away:
+                    app.logger.warning(f"[MATCHING] Checking BBC: '{bbc_home}' vs '{bbc_away}' vs Selection: '{sel_home}' vs '{sel_away}'")
+
+                if (bbc_home == sel_home and bbc_away == sel_away):
                     live_match = bbc_match
+                    app.logger.warning(f"[MATCHING] Found match for {selector}: {sel_home} vs {sel_away}")
                     break
 
             if live_match:
@@ -1420,7 +1429,7 @@ def get_bbc_fixtures():
             if BBCSportScraper is not None:
                 try:
                     scraper = BBCSportScraper()
-                    scraper_result = scraper.scrape_saturday_3pm_fixtures()
+                    scraper_result = scraper.scrape_saturday_fixtures()
                     all_bbc_matches = scraper_result.get("matches_3pm", [])
                     week = scraper_result.get("next_saturday", week)
                     app.logger.info(f"Scraped {len(all_bbc_matches)} matches for {week}")
@@ -1872,14 +1881,19 @@ def get_modern_tracker_data():
         # Process selections with enhanced data structure
         if selections:
             selected_count = 0
+            app.logger.info(f"[DEBUG] Processing {len(selections)} selections for week {week}")
             for selector in SELECTORS:
                 if selector in selections:
                     match_data = selections[selector]
                     if match_data and isinstance(match_data, dict):
+                        home_team = match_data.get("home_team")
+                        away_team = match_data.get("away_team")
+                        app.logger.info(f"[DEBUG] Selection for {selector}: {home_team} vs {away_team}")
+
                         # Enhanced match data structure
                         enhanced_match = {
-                            "home_team": match_data.get("home_team"),
-                            "away_team": match_data.get("away_team"),
+                            "home_team": home_team,
+                            "away_team": away_team,
                             "prediction": match_data.get("prediction", "TBD"),
                             "confidence": match_data.get("confidence", 5),
                             "assigned_at": match_data.get("assigned_at", datetime.now().isoformat()),
@@ -1919,6 +1933,27 @@ def get_modern_tracker_data():
             response_data["statistics"]["selected_count"] = selected_count
             response_data["statistics"]["placeholder_count"] = len(SELECTORS) - selected_count
             response_data["statistics"]["completion_percentage"] = max(0, min(100, int((selected_count / len(SELECTORS)) * 100))) if len(SELECTORS) > 0 else 0
+        else:
+            app.logger.info(f"[DEBUG] No selections found for week {week}")
+            # Create placeholders for all selectors
+            for selector in SELECTORS:
+                placeholder_match = {
+                    "home_team": None,
+                    "away_team": None,
+                    "prediction": "TBD",
+                    "confidence": 0,
+                    "assigned_at": None,
+                    "league": None,
+                    "status": "no_selection",
+                    "home_score": 0,
+                    "away_score": 0,
+                    "match_time": "—",
+                    "btts_detected": False,
+                    "is_selected": False,
+                    "placeholder_text": "Awaiting Match Assignment",
+                    "last_updated": datetime.now().isoformat()
+                }
+                response_data["matches"][selector] = placeholder_match
 
         # Get live scores from BBC for BTTS detection
         try:
@@ -1927,6 +1962,10 @@ def get_modern_tracker_data():
                 live_result = scraper.scrape_live_scores(target_date)
                 all_live_matches = live_result.get("live_matches", [])
                 app.logger.info(f"[DEBUG] /api/modern-tracker-data - Scraped {len(all_live_matches)} live matches from BBC")
+
+                # Debug: Log all live matches found
+                for i, match in enumerate(all_live_matches[:10], 1):  # Log first 10
+                    app.logger.warning(f"[DEBUG] Live match {i}: {match.get('home_team', 'Unknown')} vs {match.get('away_team', 'Unknown')} ({match.get('kickoff', 'Unknown')}) - {match.get('home_score', 0)}-{match.get('away_score', 0)}")
             else:
                 all_live_matches = []
                 app.logger.warning("[DEBUG] /api/modern-tracker-data - BBC scraper not available")
